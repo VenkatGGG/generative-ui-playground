@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./mongo": {
+      "types": "./dist/mongo/index.d.ts",
+      "default": "./dist/mongo/index.js"
     }
   },
   "scripts": {
@@ -17,6 +21,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@repo/contracts": "workspace:*"
+    "@repo/contracts": "workspace:*",
+    "mongodb": "^6.20.0"
   }
 }
