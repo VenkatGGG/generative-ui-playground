@@ -13,24 +13,54 @@ const SUPPORTED_COMPONENT_TYPES = [
 ] as const;
 
 const SUPPORTED_COMPONENT_SET = new Set<string>(SUPPORTED_COMPONENT_TYPES);
+const SUPPORTED_COMPONENT_BY_LOWER = new Map(
+  SUPPORTED_COMPONENT_TYPES.map((type) => [type.toLowerCase(), type])
+);
 
 const TYPE_ALIASES: Record<string, string> = {
-  PricingCard: "Card",
-  Heading: "CardTitle",
-  Title: "CardTitle",
-  Subheading: "CardDescription",
-  Description: "CardDescription",
-  Paragraph: "Text",
-  Label: "Text",
-  PriceDisplay: "Text",
-  List: "CardContent",
-  ListItem: "Text",
-  Stack: "CardContent",
-  Box: "CardContent",
-  CTAButton: "Button"
+  pricingcard: "Card",
+  heading: "CardTitle",
+  title: "CardTitle",
+  header: "CardTitle",
+  h1: "CardTitle",
+  h2: "CardTitle",
+  h3: "CardTitle",
+  h4: "CardTitle",
+  h5: "CardTitle",
+  h6: "CardTitle",
+  subheading: "CardDescription",
+  subtitle: "CardDescription",
+  description: "CardDescription",
+  paragraph: "Text",
+  label: "Text",
+  pricedisplay: "Text",
+  listitem: "Text",
+  p: "Text",
+  span: "Text",
+  body: "Text",
+  caption: "Text",
+  list: "CardContent",
+  stack: "CardContent",
+  box: "CardContent",
+  container: "CardContent",
+  section: "CardContent",
+  wrapper: "CardContent",
+  div: "CardContent",
+  content: "CardContent",
+  main: "CardContent",
+  flex: "CardContent",
+  grid: "CardContent",
+  row: "CardContent",
+  column: "CardContent",
+  footer: "CardContent",
+  ctabutton: "Button",
+  link: "Button",
+  anchor: "Button",
+  a: "Button"
 };
 
 const COMPLEX_PROMPT_HINT = /\b(pricing|landing|checkout|dashboard|hero|feature|section|form)\b/i;
+const SIMPLE_PROMPT_HINT = /\b(simple|minimal|minimalist|minimalistic|single|basic|plain|tiny|compact|just)\b/i;
 const BUTTON_HINT = /\bbutton|cta|call to action\b/i;
 const BADGE_HINT = /\bbadge\b/i;
 const CARD_HINT = /\bcard\b/i;
@@ -52,7 +82,8 @@ export interface ConstraintViolation {
     | "CONSTRAINT_MIN_ROOT_CHILDREN"
     | "CONSTRAINT_REQUIRED_COMPONENT"
     | "CONSTRAINT_REQUIRED_TEXT"
-    | "CONSTRAINT_TEXT_NODE_REQUIRED";
+    | "CONSTRAINT_TEXT_NODE_REQUIRED"
+    | "CONSTRAINT_CARD_STRUCTURE";
   message: string;
 }
 
@@ -107,7 +138,13 @@ function extractExactTokensFromNotes(context: MCPComponentContext): string[] {
 }
 
 export function canonicalizeComponentType(type: string): string {
-  return TYPE_ALIASES[type] ?? type;
+  const normalized = type.trim();
+  const supported = SUPPORTED_COMPONENT_BY_LOWER.get(normalized.toLowerCase());
+  if (supported) {
+    return supported;
+  }
+
+  return TYPE_ALIASES[normalized.toLowerCase()] ?? normalized;
 }
 
 export function canonicalizeNodeTypes(node: UIComponentNode): UIComponentNode {
@@ -150,7 +187,11 @@ export function buildConstraintSet(input: BuildConstraintInput): ConstraintSet {
   );
 
   const tokenDrivenMinimum = Math.min(12, requiredTextTokens.length + 2);
-  const complexityFloor = COMPLEX_PROMPT_HINT.test(prompt) ? 8 : 3;
+  const complexityFloor = COMPLEX_PROMPT_HINT.test(prompt)
+    ? 10
+    : SIMPLE_PROMPT_HINT.test(prompt)
+      ? 3
+      : 5;
   const minElementCount =
     input.pass1.intentType === "new" ? Math.max(tokenDrivenMinimum, complexityFloor) : 1;
 
@@ -178,9 +219,34 @@ function getAllStringValues(spec: UISpec): string {
   return tokens.join(" ").toLowerCase();
 }
 
+function collectDescendantTypes(spec: UISpec, initialIds: string[]): Set<string> {
+  const discoveredTypes = new Set<string>();
+  const visited = new Set<string>();
+  const queue = [...initialIds];
+
+  while (queue.length > 0) {
+    const elementId = queue.shift();
+    if (!elementId || visited.has(elementId)) {
+      continue;
+    }
+
+    visited.add(elementId);
+    const element = spec.elements[elementId];
+    if (!element) {
+      continue;
+    }
+
+    discoveredTypes.add(element.type);
+    queue.push(...element.children);
+  }
+
+  return discoveredTypes;
+}
+
 export function validateConstraintSet(spec: UISpec, constraints: ConstraintSet): ConstraintViolation[] {
   const violations: ConstraintViolation[] = [];
-  const elements = Object.values(spec.elements);
+  const entries = Object.entries(spec.elements);
+  const elements = entries.map(([, element]) => element);
   const rootElement = spec.elements[spec.root];
 
   if (elements.length < constraints.minElementCount) {
@@ -225,6 +291,32 @@ export function validateConstraintSet(spec: UISpec, constraints: ConstraintSet):
       violations.push({
         code: "CONSTRAINT_TEXT_NODE_REQUIRED",
         message: "At least one visible text node is required for new UI generations."
+      });
+    }
+  }
+
+  for (const [elementId, element] of entries) {
+    if (element.type !== "Card") {
+      continue;
+    }
+
+    const descendantTypes = collectDescendantTypes(spec, element.children);
+    const hasHeaderOrTitle =
+      descendantTypes.has("CardHeader") || descendantTypes.has("CardTitle");
+    const hasContent = descendantTypes.has("CardContent");
+
+    if (!hasHeaderOrTitle || !hasContent) {
+      const missing: string[] = [];
+      if (!hasHeaderOrTitle) {
+        missing.push("CardHeader or CardTitle");
+      }
+      if (!hasContent) {
+        missing.push("CardContent");
+      }
+
+      violations.push({
+        code: "CONSTRAINT_CARD_STRUCTURE",
+        message: `Card '${elementId}' is missing required structure: ${missing.join(" and ")}.`
       });
     }
   }

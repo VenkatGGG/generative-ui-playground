@@ -37,6 +37,66 @@ interface OpenAIChatCompletionRequest {
       };
 }
 
+const PASS2_ALLOWED_COMPONENT_TYPES = [
+  "Card",
+  "CardHeader",
+  "CardTitle",
+  "CardDescription",
+  "CardContent",
+  "Button",
+  "Badge",
+  "Text"
+] as const;
+
+const PASS2_EXAMPLE_TREE = {
+  id: "root",
+  type: "Card",
+  props: {
+    className: "w-full max-w-md border shadow-sm rounded-xl"
+  },
+  children: [
+    {
+      id: "header",
+      type: "CardHeader",
+      children: [
+        {
+          id: "title",
+          type: "CardTitle",
+          children: ["Pro Plan"]
+        },
+        {
+          id: "description",
+          type: "CardDescription",
+          children: ["Perfect for startups and small teams."]
+        }
+      ]
+    },
+    {
+      id: "content",
+      type: "CardContent",
+      children: [
+        {
+          id: "price",
+          type: "Text",
+          children: ["$29/mo"]
+        },
+        {
+          id: "badge",
+          type: "Badge",
+          props: { variant: "secondary" },
+          children: ["Popular"]
+        },
+        {
+          id: "cta",
+          type: "Button",
+          props: { variant: "default", size: "default" },
+          children: ["Start Free Trial"]
+        }
+      ]
+    }
+  ]
+} as const;
+
 function buildEndpoint(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 }
@@ -55,12 +115,23 @@ function toPass1Prompt(input: ExtractComponentsInput): string {
 function toPass2Prompt(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const context = JSON.stringify(input.componentContext);
+  const allowedTypes = PASS2_ALLOWED_COMPONENT_TYPES.join(", ");
+  const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
 
   return [
-    "You generate UI tree snapshots for a React renderer.",
+    "You generate rich UI tree snapshots for a React renderer.",
     "Output newline-delimited JSON objects only.",
     "Each line must be one complete UIComponentNode object with id,type,props?,children?.",
     "No markdown, no explanations.",
+    `Allowed component types ONLY: ${allowedTypes}. Do not invent other types.`,
+    "Composition rules:",
+    "- Card must contain CardHeader with CardTitle and optional CardDescription.",
+    "- Card must contain CardContent for the body/actions.",
+    "- Place action components like Button/Badge in CardContent when relevant.",
+    "- Textual UI content must be represented as string children.",
+    "Generate visually complete output with meaningful copy and spacing cues, not skeletal placeholders.",
+    "Reference example of a valid complete snapshot:",
+    example,
     `Prompt: ${input.prompt}`,
     `PreviousSpec: ${previousSpec}`,
     `ComponentContext: ${context}`

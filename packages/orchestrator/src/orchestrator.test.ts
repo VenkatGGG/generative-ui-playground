@@ -3,6 +3,28 @@ import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { runGeneration } from "./orchestrator";
 
+function buildRichCardSnapshot(title: string, description: string, cta: string): Record<string, unknown> {
+  return {
+    id: "root",
+    type: "Card",
+    children: [
+      {
+        id: "header",
+        type: "CardHeader",
+        children: [
+          { id: "title", type: "CardTitle", children: [title] },
+          { id: "description", type: "CardDescription", children: [description] }
+        ]
+      },
+      {
+        id: "content",
+        type: "CardContent",
+        children: [{ id: "cta", type: "Button", children: [cta] }]
+      }
+    ]
+  };
+}
+
 function buildDeepNode(depth: number): Record<string, unknown> {
   if (depth <= 0) {
     return {
@@ -109,14 +131,7 @@ function createDeps(): {
       };
     },
     async *streamDesign() {
-      yield JSON.stringify({
-        id: "root",
-        type: "Card",
-        children: [
-          { id: "txt", type: "Text", children: ["hello"] },
-          { id: "cta", type: "Button", children: ["Continue"] }
-        ]
-      });
+      yield JSON.stringify(buildRichCardSnapshot("Generated UI", "hello", "Continue"));
     }
   };
 
@@ -235,22 +250,8 @@ describe("runGeneration", () => {
 
   it("handles partial chunked json objects without newline delimiters", async () => {
     const deps = createDeps();
-    const firstSnapshot = JSON.stringify({
-      id: "root",
-      type: "Card",
-      children: [
-        { id: "txt", type: "Text", children: ["hello"] },
-        { id: "cta", type: "Button", children: ["Continue"] }
-      ]
-    });
-    const secondSnapshot = JSON.stringify({
-      id: "root",
-      type: "Card",
-      children: [
-        { id: "txt", type: "Text", children: ["hello v2"] },
-        { id: "cta", type: "Button", children: ["Continue"] }
-      ]
-    });
+    const firstSnapshot = JSON.stringify(buildRichCardSnapshot("Generated UI", "hello", "Continue"));
+    const secondSnapshot = JSON.stringify(buildRichCardSnapshot("Generated UI", "hello v2", "Continue"));
 
     deps.model = {
       ...deps.model,
@@ -284,14 +285,7 @@ describe("runGeneration", () => {
 
   it("skips malformed snapshots and continues with valid snapshots", async () => {
     const deps = createDeps();
-    const validSnapshot = JSON.stringify({
-      id: "root",
-      type: "Card",
-      children: [
-        { id: "txt", type: "Text", children: ["ok"] },
-        { id: "cta", type: "Button", children: ["Continue"] }
-      ]
-    });
+    const validSnapshot = JSON.stringify(buildRichCardSnapshot("Generated UI", "ok", "Continue"));
 
     deps.model = {
       ...deps.model,
@@ -338,12 +332,7 @@ describe("runGeneration", () => {
         }
 
         yield JSON.stringify({
-          id: "root",
-          type: "Card",
-          children: [
-            { id: "txt", type: "Text", children: ["Pro Plan"] },
-            { id: "cta", type: "Button", children: ["Continue"] }
-          ]
+          ...buildRichCardSnapshot("Pro Plan", "Refined", "Continue")
         });
       }
     };

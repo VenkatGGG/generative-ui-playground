@@ -31,31 +31,91 @@ interface GeminiGenerateRequest {
   };
 }
 
-const GEMINI_UI_COMPONENT_NODE_SCHEMA: Record<string, unknown> = {
-  type: "OBJECT",
-  required: ["id", "type"],
-  properties: {
-    id: { type: "STRING" },
-    type: { type: "STRING" },
-    props: { type: "OBJECT" },
-    children: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        required: ["id", "type"],
-        properties: {
-          id: { type: "STRING" },
-          type: { type: "STRING" },
-          props: { type: "OBJECT" },
-          children: {
-            type: "ARRAY",
-            items: { type: "OBJECT" }
-          }
+const PASS2_ALLOWED_COMPONENT_TYPES = [
+  "Card",
+  "CardHeader",
+  "CardTitle",
+  "CardDescription",
+  "CardContent",
+  "Button",
+  "Badge",
+  "Text"
+] as const;
+
+const PASS2_EXAMPLE_TREE = {
+  id: "root",
+  type: "Card",
+  props: {
+    className: "w-full max-w-md border shadow-sm rounded-xl"
+  },
+  children: [
+    {
+      id: "header",
+      type: "CardHeader",
+      children: [
+        {
+          id: "title",
+          type: "CardTitle",
+          children: ["Pro Plan"]
+        },
+        {
+          id: "description",
+          type: "CardDescription",
+          children: ["Perfect for startups and small teams."]
         }
-      }
+      ]
+    },
+    {
+      id: "content",
+      type: "CardContent",
+      children: [
+        {
+          id: "price",
+          type: "Text",
+          children: ["$29/mo"]
+        },
+        {
+          id: "badge",
+          type: "Badge",
+          props: { variant: "secondary" },
+          children: ["Popular"]
+        },
+        {
+          id: "cta",
+          type: "Button",
+          props: { variant: "default", size: "default" },
+          children: ["Start Free Trial"]
+        }
+      ]
     }
+  ]
+} as const;
+
+function createGeminiNodeSchema(depth: number): Record<string, unknown> {
+  const schema: Record<string, unknown> = {
+    type: "OBJECT",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "STRING" },
+      type: { type: "STRING" },
+      props: { type: "OBJECT" }
+    }
+  };
+
+  const childOptions: Array<Record<string, unknown>> = [{ type: "STRING" }];
+  if (depth > 1) {
+    childOptions.push(createGeminiNodeSchema(depth - 1));
   }
-};
+
+  (schema.properties as Record<string, unknown>).children = {
+    type: "ARRAY",
+    items: childOptions.length === 1 ? childOptions[0] : { anyOf: childOptions }
+  };
+
+  return schema;
+}
+
+const GEMINI_UI_COMPONENT_NODE_SCHEMA = createGeminiNodeSchema(4);
 
 function buildGenerateEndpoint(baseUrl: string, model: string, apiKey: string): string {
   return `${baseUrl.replace(/\/$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -79,12 +139,23 @@ function toPass1Prompt(input: ExtractComponentsInput): string {
 function toPass2Prompt(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const context = JSON.stringify(input.componentContext);
+  const allowedTypes = PASS2_ALLOWED_COMPONENT_TYPES.join(", ");
+  const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
 
   return [
-    "You generate UI tree snapshots for a React renderer.",
+    "You generate rich UI tree snapshots for a React renderer.",
     "Output newline-delimited JSON objects only.",
     "Each line must be one complete UIComponentNode object with id,type,props?,children?.",
     "No markdown, no explanations.",
+    `Allowed component types ONLY: ${allowedTypes}. Do not invent other types.`,
+    "Composition rules:",
+    "- Card must contain CardHeader with CardTitle and optional CardDescription.",
+    "- Card must contain CardContent for the body/actions.",
+    "- Place action components like Button/Badge in CardContent when relevant.",
+    "- Textual UI content must be represented as string children.",
+    "Generate visually complete output with meaningful copy and spacing cues, not skeletal placeholders.",
+    "Reference example of a valid complete snapshot:",
+    example,
     `Prompt: ${input.prompt}`,
     `PreviousSpec: ${previousSpec}`,
     `ComponentContext: ${context}`
