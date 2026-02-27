@@ -3,8 +3,13 @@ import { createOpenAIGenerationModel } from "./model";
 
 describe("createOpenAIGenerationModel", () => {
   it("extracts component list using pass1 response", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response(
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        response_format?: { type?: string };
+      };
+      expect(body.response_format?.type).toBe("json_object");
+
+      return new Response(
         JSON.stringify({
           choices: [
             {
@@ -25,6 +30,7 @@ describe("createOpenAIGenerationModel", () => {
           }
         }
       );
+    };
 
     const adapter = createOpenAIGenerationModel({
       apiKey: "test-key",
@@ -51,13 +57,25 @@ describe("createOpenAIGenerationModel", () => {
       ""
     ].join("\n");
 
-    const fetchImpl: typeof fetch = async () =>
-      new Response(ssePayload, {
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        response_format?: {
+          type?: string;
+          json_schema?: { strict?: boolean; schema?: unknown };
+        };
+      };
+
+      expect(body.response_format?.type).toBe("json_schema");
+      expect(body.response_format?.json_schema?.strict).toBe(true);
+      expect(body.response_format?.json_schema?.schema).toBeDefined();
+
+      return new Response(ssePayload, {
         status: 200,
         headers: {
           "Content-Type": "text/event-stream"
         }
       });
+    };
 
     const adapter = createOpenAIGenerationModel({
       apiKey: "test-key",

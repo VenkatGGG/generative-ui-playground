@@ -5,6 +5,7 @@ import type {
 } from "../interfaces";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { parseSseData } from "../shared/sse";
+import { UI_COMPONENT_NODE_JSON_SCHEMA } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
@@ -27,6 +28,7 @@ interface GeminiGenerateRequest {
   }>;
   generationConfig?: {
     responseMimeType?: string;
+    responseSchema?: Record<string, unknown>;
   };
 }
 
@@ -64,7 +66,7 @@ function toPass2Prompt(input: StreamDesignInput): string {
   ].join("\n");
 }
 
-function toRequest(prompt: string): GeminiGenerateRequest {
+function toRequest(prompt: string, responseSchema?: Record<string, unknown>): GeminiGenerateRequest {
   return {
     contents: [
       {
@@ -73,7 +75,8 @@ function toRequest(prompt: string): GeminiGenerateRequest {
       }
     ],
     generationConfig: {
-      responseMimeType: "application/json"
+      responseMimeType: "application/json",
+      ...(responseSchema ? { responseSchema } : {})
     }
   };
 }
@@ -207,7 +210,11 @@ export function createGeminiGenerationModel(
     },
     streamDesign(input) {
       const endpoint = buildStreamEndpoint(baseUrl, pass2Model, options.apiKey);
-      return streamGemini(fetchImpl, endpoint, toRequest(toPass2Prompt(input)));
+      return streamGemini(
+        fetchImpl,
+        endpoint,
+        toRequest(toPass2Prompt(input), UI_COMPONENT_NODE_JSON_SCHEMA)
+      );
     }
   };
 }

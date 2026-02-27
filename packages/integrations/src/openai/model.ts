@@ -5,6 +5,7 @@ import type {
 } from "../interfaces";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { parseSseData } from "../shared/sse";
+import { UI_COMPONENT_NODE_JSON_SCHEMA } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_PASS1_MODEL = "gpt-4.1-mini";
@@ -24,7 +25,16 @@ interface OpenAIChatCompletionRequest {
   model: string;
   messages: Array<{ role: "user"; content: string }>;
   stream?: boolean;
-  response_format?: { type: "json_object" };
+  response_format?:
+    | { type: "json_object" }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name: string;
+          strict: boolean;
+          schema: Record<string, unknown>;
+        };
+      };
 }
 
 function buildEndpoint(baseUrl: string): string {
@@ -209,7 +219,15 @@ export function createOpenAIGenerationModel(
     streamDesign(input) {
       return streamOpenAI(fetchImpl, endpoint, options.apiKey, {
         model: pass2Model,
-        messages: [{ role: "user", content: toPass2Prompt(input) }]
+        messages: [{ role: "user", content: toPass2Prompt(input) }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "ui_component_node",
+            strict: true,
+            schema: UI_COMPONENT_NODE_JSON_SCHEMA
+          }
+        }
       });
     }
   };

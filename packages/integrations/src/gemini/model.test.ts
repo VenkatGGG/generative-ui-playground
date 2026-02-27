@@ -3,8 +3,15 @@ import { createGeminiGenerationModel } from "./model";
 
 describe("createGeminiGenerationModel", () => {
   it("extracts component list using pass1 response", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response(
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        generationConfig?: { responseMimeType?: string; responseSchema?: unknown };
+      };
+
+      expect(body.generationConfig?.responseMimeType).toBe("application/json");
+      expect(body.generationConfig?.responseSchema).toBeUndefined();
+
+      return new Response(
         JSON.stringify({
           candidates: [
             {
@@ -29,6 +36,7 @@ describe("createGeminiGenerationModel", () => {
           }
         }
       );
+    };
 
     const adapter = createGeminiGenerationModel({
       apiKey: "test-key",
@@ -55,13 +63,20 @@ describe("createGeminiGenerationModel", () => {
       ""
     ].join("\n");
 
-    const fetchImpl: typeof fetch = async () =>
-      new Response(ssePayload, {
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        generationConfig?: { responseSchema?: unknown };
+      };
+
+      expect(body.generationConfig?.responseSchema).toBeDefined();
+
+      return new Response(ssePayload, {
         status: 200,
         headers: {
           "Content-Type": "text/event-stream"
         }
       });
+    };
 
     const adapter = createGeminiGenerationModel({
       apiKey: "test-key",
