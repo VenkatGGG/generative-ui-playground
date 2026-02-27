@@ -7,6 +7,22 @@ export interface StreamGenerateOptions {
   signal?: AbortSignal;
 }
 
+export class StreamGenerateError extends Error {
+  public readonly code: "HTTP_ERROR" | "STREAM_INTERRUPTED";
+  public readonly status?: number;
+
+  public constructor(
+    code: "HTTP_ERROR" | "STREAM_INTERRUPTED",
+    message: string,
+    status?: number
+  ) {
+    super(message);
+    this.name = "StreamGenerateError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function parseDataLine(line: string): StreamEvent | null {
   const raw = line.replace(/^data:\s?/, "").trim();
   if (!raw) {
@@ -38,12 +54,13 @@ export async function streamGenerate(options: StreamGenerateOptions): Promise<vo
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`Generation request failed: ${response.status}`);
+    throw new StreamGenerateError("HTTP_ERROR", `Generation request failed: ${response.status}`, response.status);
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let terminalEventSeen = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -63,7 +80,18 @@ export async function streamGenerate(options: StreamGenerateOptions): Promise<vo
         }
         const event = parseDataLine(line);
         if (event) {
-          options.onEvent(event);
+          try {
+            options.onEvent(event);
+          } catch (error) {
+            await reader.cancel().catch(() => undefined);
+            throw error;
+          }
+
+          if (event.type === "done" || event.type === "error") {
+            terminalEventSeen = true;
+            await reader.cancel().catch(() => undefined);
+            return;
+          }
         }
       }
     }
@@ -77,8 +105,18 @@ export async function streamGenerate(options: StreamGenerateOptions): Promise<vo
       const event = parseDataLine(line);
       if (event) {
         options.onEvent(event);
+        if (event.type === "done" || event.type === "error") {
+          terminalEventSeen = true;
+        }
       }
     }
+  }
+
+  if (!terminalEventSeen) {
+    throw new StreamGenerateError(
+      "STREAM_INTERRUPTED",
+      "Generation stream ended without a terminal done/error event."
+    );
   }
 }
 

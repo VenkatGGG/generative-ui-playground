@@ -117,4 +117,29 @@ describe("runGeneration", () => {
     expect(events[0]).toBe("status");
     expect(events.includes("done")).toBe(true);
   });
+
+  it("returns base version conflict for stale version ids", async () => {
+    const events = [] as Array<{ type: string; code?: string }>;
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "build card",
+        baseVersionId: "missing-version"
+      },
+      createDeps()
+    )) {
+      events.push({
+        type: event.type,
+        code: "code" in event ? event.code : undefined
+      });
+    }
+
+    expect(events).toEqual([
+      {
+        type: "error",
+        code: "BASE_VERSION_CONFLICT"
+      }
+    ]);
+  });
 });

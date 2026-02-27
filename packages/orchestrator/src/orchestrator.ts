@@ -46,6 +46,16 @@ export async function* runGeneration(
   }
 
   const baseVersion = await deps.persistence.getVersion(request.threadId, request.baseVersionId);
+  if (request.baseVersionId && !baseVersion) {
+    yield {
+      type: "error",
+      generationId,
+      code: "BASE_VERSION_CONFLICT",
+      message: `Base version '${request.baseVersionId}' was not found for thread '${request.threadId}'.`
+    };
+    return;
+  }
+
   let canonicalSpec: UISpec =
     baseVersion?.specSnapshot ??
     ({

@@ -25,6 +25,22 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const runtimeDeps = await getRuntimeDeps();
+  if (parsed.data.baseVersionId) {
+    const baseVersion = await runtimeDeps.persistence.getVersion(
+      parsed.data.threadId,
+      parsed.data.baseVersionId
+    );
+
+    if (!baseVersion) {
+      return Response.json(
+        {
+          error: "BASE_VERSION_CONFLICT",
+          message: `Base version '${parsed.data.baseVersionId}' was not found. Refresh thread state and retry.`
+        },
+        { status: 409 }
+      );
+    }
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

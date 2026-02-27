@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
-import { generationReducer, initialGenerationState, streamGenerate } from "@repo/client-core";
+import {
+  generationReducer,
+  initialGenerationState,
+  streamGenerate,
+  StreamGenerateError
+} from "@repo/client-core";
 import type { ThreadBundle, UISpec, VersionRecord } from "@repo/contracts";
 import { DynamicRenderer, createStrictRegistry, type RegisteredComponentProps } from "@repo/renderer-react";
 
@@ -200,7 +205,21 @@ export default function HomePage() {
           baseVersionId: bundle.thread.activeVersionId
         },
         onEvent: (incomingEvent) => {
-          dispatch(incomingEvent);
+          try {
+            dispatch(incomingEvent);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Could not apply streamed patch update.";
+
+            dispatch({
+              type: "error",
+              generationId: incomingEvent.generationId,
+              code: "PATCH_APPLY_FAILED",
+              message
+            });
+
+            throw new Error(`PATCH_APPLY_FAILED:${message}`);
+          }
 
           if (incomingEvent.type === "done") {
             void refreshThread(bundle.thread.threadId);
@@ -209,7 +228,27 @@ export default function HomePage() {
       });
       setPrompt("");
     } catch (error) {
-      setThreadError(error instanceof Error ? error.message : "Generation failed.");
+      if (
+        error instanceof StreamGenerateError &&
+        error.code === "HTTP_ERROR" &&
+        error.status === 409
+      ) {
+        await refreshThread(bundle.thread.threadId);
+        setThreadError("Base version was stale. Thread state has been refreshed.");
+        return;
+      }
+
+      if (error instanceof StreamGenerateError && error.code === "STREAM_INTERRUPTED") {
+        dispatch({
+          type: "error",
+          generationId: state.generationId ?? "unknown",
+          code: "STREAM_INTERRUPTED",
+          message: error.message
+        });
+      }
+
+      const message = error instanceof Error ? error.message : "Generation failed.";
+      setThreadError(message.replace(/^PATCH_APPLY_FAILED:/, "Patch apply failed: "));
     }
   };
 
