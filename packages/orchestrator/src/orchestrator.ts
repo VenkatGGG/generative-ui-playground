@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { GenerateRequest, StreamEvent, UIComponentNode, UISpec } from "@repo/contracts";
+import {
+  UIComponentNodeSchema,
+  type GenerateRequest,
+  type StreamEvent,
+  type UIComponentNode,
+  type UISpec
+} from "@repo/contracts";
 import { normalizeTreeToSpec, validateSpec, diffSpecs } from "@repo/spec-engine";
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
@@ -18,11 +24,12 @@ function specHash(spec: UISpec): string {
 function parseCandidateObject(input: string): UIComponentNode | null {
   try {
     const parsed = JSON.parse(input);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const validated = UIComponentNodeSchema.safeParse(parsed);
+    if (!validated.success) {
       return null;
     }
 
-    return parsed as UIComponentNode;
+    return validated.data as UIComponentNode;
   } catch {
     return null;
   }

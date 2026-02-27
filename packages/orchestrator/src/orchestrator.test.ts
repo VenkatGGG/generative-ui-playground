@@ -233,4 +233,31 @@ describe("runGeneration", () => {
     expect(events.includes("error")).toBe(false);
     expect(patchCount).toBeGreaterThan(0);
   });
+
+  it("skips malformed snapshots and continues with valid snapshots", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign() {
+        yield '{\"type\":\"Card\"}{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"ok\"]}]}';
+      }
+    };
+
+    const events: string[] = [];
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "malformed then valid",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      events.push(event.type);
+    }
+
+    expect(events.includes("done")).toBe(true);
+    expect(events.includes("error")).toBe(false);
+  });
 });
