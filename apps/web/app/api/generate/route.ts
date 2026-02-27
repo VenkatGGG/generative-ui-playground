@@ -1,6 +1,7 @@
 import { GenerateRequestSchema } from "@repo/contracts";
 import { formatSseEvent } from "@repo/client-core";
 import { runGeneration } from "@repo/orchestrator";
+import type { OrchestratorDeps } from "@repo/orchestrator";
 import { getRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
@@ -24,7 +25,20 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const runtimeDeps = await getRuntimeDeps();
+  let runtimeDeps: OrchestratorDeps;
+  try {
+    runtimeDeps = await getRuntimeDeps();
+  } catch (error) {
+    return Response.json(
+      {
+        error: "RUNTIME_DEPENDENCY_ERROR",
+        message:
+          error instanceof Error ? error.message : "Failed to initialize runtime dependencies."
+      },
+      { status: 500 }
+    );
+  }
+
   if (parsed.data.baseVersionId) {
     const baseVersion = await runtimeDeps.persistence.getVersion(
       parsed.data.threadId,
