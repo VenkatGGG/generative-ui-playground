@@ -3,6 +3,22 @@ import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { runGeneration } from "./orchestrator";
 
+function buildDeepNode(depth: number): Record<string, unknown> {
+  if (depth <= 0) {
+    return {
+      id: "leaf",
+      type: "Text",
+      children: ["leaf"]
+    };
+  }
+
+  return {
+    id: `node-${depth}`,
+    type: "Card",
+    children: [buildDeepNode(depth - 1)]
+  };
+}
+
 function createDeps(): {
   model: GenerationModelAdapter;
   mcp: MCPAdapter;
@@ -141,5 +157,47 @@ describe("runGeneration", () => {
         code: "BASE_VERSION_CONFLICT"
       }
     ]);
+  });
+
+  it("stops generation when validation limits are exceeded", async () => {
+    const deps = createDeps();
+    let persisted = false;
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign() {
+        yield `${JSON.stringify(buildDeepNode(34))}\n`;
+      }
+    };
+
+    deps.persistence = {
+      ...deps.persistence,
+      async persistGeneration() {
+        persisted = true;
+        throw new Error("should not persist");
+      }
+    };
+
+    const events = [] as Array<{ type: string; code?: string }>;
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "build a deeply nested tree",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      events.push({
+        type: event.type,
+        code: "code" in event ? event.code : undefined
+      });
+    }
+
+    expect(events.some((event) => event.type === "error" && event.code === "MAX_DEPTH_EXCEEDED")).toBe(
+      true
+    );
+    expect(events.some((event) => event.type === "done")).toBe(false);
+    expect(persisted).toBe(false);
   });
 });

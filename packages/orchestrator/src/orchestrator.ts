@@ -27,6 +27,8 @@ function parseCandidateLine(line: string): UIComponentNode | null {
   }
 }
 
+const fatalValidationCodes = new Set(["MAX_DEPTH_EXCEEDED", "MAX_NODES_EXCEEDED"]);
+
 export async function* runGeneration(
   request: GenerateRequest,
   deps: OrchestratorDeps
@@ -75,6 +77,54 @@ export async function* runGeneration(
 
   yield { type: "status", generationId, stage: "pass2_stream_design" };
 
+  const allowedComponentTypes = new Set([
+    ...pass1.components,
+    "Text",
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardContent",
+    "Button"
+  ]);
+
+  const validateAndDiffCandidate = (
+    candidateSpec: UISpec
+  ):
+    | { type: "valid"; patches: ReturnType<typeof diffSpecs>; nextSpec: UISpec }
+    | {
+        type: "invalid";
+        warnings: Array<{ code: string; message: string }>;
+        fatalError: { code: string; message: string } | null;
+      } => {
+    const validation = validateSpec(candidateSpec, { allowedComponentTypes });
+
+    if (!validation.valid) {
+      const nextWarnings = validation.issues.map((issue) => ({
+        code: issue.code,
+        message: issue.message
+      }));
+      const fatalIssue = validation.issues.find((issue) => fatalValidationCodes.has(issue.code));
+
+      return {
+        type: "invalid",
+        warnings: nextWarnings,
+        fatalError: fatalIssue
+          ? {
+              code: fatalIssue.code,
+              message: fatalIssue.message
+            }
+          : null
+      };
+    }
+
+    return {
+      type: "valid",
+      patches: diffSpecs(canonicalSpec, candidateSpec),
+      nextSpec: candidateSpec
+    };
+  };
+
   let buffer = "";
 
   for await (const chunk of deps.model.streamDesign({
@@ -93,21 +143,10 @@ export async function* runGeneration(
       }
 
       const candidateSpec = normalizeTreeToSpec(candidateNode);
-      const validation = validateSpec(candidateSpec, {
-        allowedComponentTypes: new Set([
-          ...pass1.components,
-          "Text",
-          "Card",
-          "CardHeader",
-          "CardTitle",
-          "CardDescription",
-          "CardContent",
-          "Button"
-        ])
-      });
+      const result = validateAndDiffCandidate(candidateSpec);
 
-      if (!validation.valid) {
-        for (const issue of validation.issues) {
+      if (result.type === "invalid") {
+        for (const issue of result.warnings) {
           const warning = {
             type: "warning" as const,
             generationId,
@@ -117,10 +156,21 @@ export async function* runGeneration(
           warnings.push({ code: warning.code, message: warning.message });
           yield warning;
         }
+
+        if (result.fatalError) {
+          yield {
+            type: "error",
+            generationId,
+            code: result.fatalError.code,
+            message: result.fatalError.message
+          };
+          return;
+        }
+
         continue;
       }
 
-      const patches = diffSpecs(canonicalSpec, candidateSpec);
+      const patches = result.patches;
       for (const patch of patches) {
         patchCount += 1;
         yield {
@@ -130,7 +180,7 @@ export async function* runGeneration(
         };
       }
 
-      canonicalSpec = candidateSpec;
+      canonicalSpec = result.nextSpec;
     }
   }
 
@@ -138,18 +188,34 @@ export async function* runGeneration(
     const candidateNode = parseCandidateLine(buffer);
     if (candidateNode) {
       const candidateSpec = normalizeTreeToSpec(candidateNode);
-      const validation = validateSpec(candidateSpec);
-      if (validation.valid) {
-        const patches = diffSpecs(canonicalSpec, candidateSpec);
-        for (const patch of patches) {
+      const result = validateAndDiffCandidate(candidateSpec);
+      if (result.type === "valid") {
+        for (const patch of result.patches) {
           patchCount += 1;
-          yield {
-            type: "patch",
-            generationId,
-            patch
-          };
+          yield { type: "patch", generationId, patch };
         }
-        canonicalSpec = candidateSpec;
+        canonicalSpec = result.nextSpec;
+      } else {
+        for (const issue of result.warnings) {
+          const warning = {
+            type: "warning" as const,
+            generationId,
+            code: issue.code,
+            message: issue.message
+          };
+          warnings.push({ code: warning.code, message: warning.message });
+          yield warning;
+        }
+
+        if (result.fatalError) {
+          yield {
+            type: "error",
+            generationId,
+            code: result.fatalError.code,
+            message: result.fatalError.message
+          };
+          return;
+        }
       }
     }
   }
