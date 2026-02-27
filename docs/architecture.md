@@ -22,6 +22,7 @@
 - Error boundaries isolate rendering crashes.
 - Iterative refinement uses version lineage, not mutable state rewrites.
 - Failure paths are logged for analytics without mutating successful version lineage.
+- Generation logs persist timing via `durationMs` alongside warning/patch/error metadata.
 
 ## Module Responsibilities
 
