@@ -9,71 +9,76 @@ import {
 } from "@repo/client-core";
 import type { ThreadBundle, UISpec, VersionRecord } from "@repo/contracts";
 import { DynamicRenderer, createStrictRegistry, type RegisteredComponentProps } from "@repo/renderer-react";
+import { Badge } from "@/components/ui/badge";
+import { Button, type ButtonProps } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
-function Card({ children, className }: RegisteredComponentProps) {
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asButtonVariant(value: unknown): ButtonProps["variant"] | undefined {
+  if (value === "default" || value === "outline" || value === "secondary" || value === "destructive") {
+    return value;
+  }
+  return undefined;
+}
+
+function asButtonSize(value: unknown): ButtonProps["size"] | undefined {
+  if (value === "default" || value === "sm" || value === "lg") {
+    return value;
+  }
+  return undefined;
+}
+
+function RegistryCard({ children, className }: RegisteredComponentProps) {
+  return <Card className={asString(className)}>{children}</Card>;
+}
+
+function RegistryCardHeader({ children, className }: RegisteredComponentProps) {
+  return <CardHeader className={asString(className)}>{children}</CardHeader>;
+}
+
+function RegistryCardTitle({ children, className }: RegisteredComponentProps) {
+  return <CardTitle className={asString(className)}>{children}</CardTitle>;
+}
+
+function RegistryCardDescription({ children, className }: RegisteredComponentProps) {
+  return <CardDescription className={asString(className)}>{children}</CardDescription>;
+}
+
+function RegistryCardContent({ children, className }: RegisteredComponentProps) {
+  return <CardContent className={asString(className)}>{children}</CardContent>;
+}
+
+function RegistryText({ text, children, className }: RegisteredComponentProps) {
+  return <span className={asString(className)}>{typeof text === "string" ? text : children}</span>;
+}
+
+function RegistryButton({ children, className, variant, size }: RegisteredComponentProps) {
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        background: "white",
-        padding: 16,
-        boxShadow: "0 1px 2px rgba(2,6,23,0.08)"
-      }}
-      className={typeof className === "string" ? className : undefined}
-    >
+    <Button className={asString(className)} variant={asButtonVariant(variant)} size={asButtonSize(size)}>
       {children}
-    </div>
-  );
-}
-
-function CardHeader({ children }: RegisteredComponentProps) {
-  return <div style={{ marginBottom: 12 }}>{children}</div>;
-}
-
-function CardTitle({ children }: RegisteredComponentProps) {
-  return <h3 style={{ margin: 0, fontSize: 20 }}>{children}</h3>;
-}
-
-function CardDescription({ children }: RegisteredComponentProps) {
-  return <p style={{ margin: "6px 0 0", color: "#475569" }}>{children}</p>;
-}
-
-function CardContent({ children }: RegisteredComponentProps) {
-  return <div>{children}</div>;
-}
-
-function Text({ text }: RegisteredComponentProps) {
-  return <span>{typeof text === "string" ? text : ""}</span>;
-}
-
-function Button({ children }: RegisteredComponentProps) {
-  return (
-    <button
-      type="button"
-      style={{
-        background: "var(--accent)",
-        color: "white",
-        border: 0,
-        borderRadius: 8,
-        padding: "10px 14px",
-        fontWeight: 600,
-        cursor: "pointer"
-      }}
-    >
-      {children}
-    </button>
+    </Button>
   );
 }
 
 const registry = createStrictRegistry({
-  Card: Card as any,
-  CardHeader: CardHeader as any,
-  CardTitle: CardTitle as any,
-  CardDescription: CardDescription as any,
-  CardContent: CardContent as any,
-  Button: Button as any,
-  Text: Text as any
+  Card: RegistryCard as any,
+  CardHeader: RegistryCardHeader as any,
+  CardTitle: RegistryCardTitle as any,
+  CardDescription: RegistryCardDescription as any,
+  CardContent: RegistryCardContent as any,
+  Button: RegistryButton as any,
+  Text: RegistryText as any
 });
 
 type UiMessage = {
@@ -114,15 +119,14 @@ export default function HomePage() {
   const [state, dispatch] = useReducer(generationReducer, initialGenerationState);
 
   const status = statusFromState(state);
-
-  const statusColor = useMemo(() => {
+  const statusVariant = useMemo<"outline" | "secondary" | "destructive">(() => {
     switch (status) {
       case "streaming":
-        return "#0369a1";
+        return "secondary";
       case "error":
-        return "#b91c1c";
+        return "destructive";
       default:
-        return "#334155";
+        return "outline";
     }
   }, [status]);
 
@@ -282,138 +286,103 @@ export default function HomePage() {
   const displaySpec = state.spec ?? hydratedSpec ?? (bundle ? findActiveSpec(bundle) : null);
 
   return (
-    <main
-      style={{
-        display: "grid",
-        gridTemplateColumns: "340px 1fr",
-        minHeight: "100vh"
-      }}
-    >
-      <aside
-        style={{
-          borderRight: "1px solid var(--border)",
-          background: "white",
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 16
-        }}
-      >
-        <header>
-          <h1 style={{ margin: 0, fontSize: 20 }}>Generative UI Studio</h1>
-          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 14 }}>
-            React-only iterative canvas
-          </p>
-        </header>
+    <main className="min-h-screen bg-background">
+      <div className="grid min-h-screen lg:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="border-r bg-card/80 p-4 backdrop-blur">
+          <div className="flex h-full flex-col gap-4">
+            <header className="space-y-1">
+              <h1 className="text-xl font-semibold tracking-tight">Generative UI Studio</h1>
+              <p className="text-sm text-muted-foreground">React-only iterative canvas</p>
+            </header>
 
-        <div style={{ padding: 10, border: "1px solid var(--border)", borderRadius: 10 }}>
-          <strong style={{ fontSize: 13 }}>Status:</strong>{" "}
-          <span style={{ color: statusColor }}>{status}</span>
-        </div>
+            <Card>
+              <CardContent className="flex items-center justify-between p-4">
+                <span className="text-sm font-medium">Status</span>
+                <Badge variant={statusVariant}>{status}</Badge>
+              </CardContent>
+            </Card>
 
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Describe changes..."
-            rows={5}
-            style={{
-              width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: 10,
-              resize: "vertical"
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!bundle || state.isStreaming}
-            style={{
-              border: 0,
-              borderRadius: 10,
-              padding: "10px 14px",
-              background: !bundle || state.isStreaming ? "#94a3b8" : "var(--accent)",
-              color: "white",
-              fontWeight: 600,
-              cursor: !bundle || state.isStreaming ? "not-allowed" : "pointer"
-            }}
-          >
-            {state.isStreaming ? "Generating..." : "Send Prompt"}
-          </button>
-        </form>
+            <form onSubmit={onSubmit} className="grid gap-2">
+              <Textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                placeholder="Describe changes..."
+                rows={5}
+                className="resize-y"
+              />
+              <Button type="submit" disabled={!bundle || state.isStreaming}>
+                {state.isStreaming ? "Generating..." : "Send Prompt"}
+              </Button>
+            </form>
 
-        <section style={{ minHeight: 0, display: "grid", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 15 }}>Conversation</h2>
-          <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, maxHeight: 200, overflow: "auto" }}>
-            {messages.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>No messages yet.</p>
-            ) : (
-              messages.map((message) => (
-                <p key={message.id} style={{ margin: "0 0 8px", fontSize: 13 }}>
-                  <strong>{message.role}:</strong> {message.content}
-                </p>
-              ))
+            <Card className="min-h-0">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Conversation</CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-52 overflow-y-auto space-y-2">
+                {messages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No messages yet.</p>
+                ) : (
+                  messages.map((message) => (
+                    <p key={message.id} className="text-sm">
+                      <span className="font-semibold">{message.role}:</span> {message.content}
+                    </p>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="min-h-0">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Versions</CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-52 overflow-y-auto space-y-3">
+                {versions.map((version) => {
+                  const active = bundle?.thread.activeVersionId === version.versionId;
+
+                  return (
+                    <div key={version.versionId} className="rounded-md border border-border p-3">
+                      <p className="text-sm font-semibold">{version.versionId.slice(0, 8)}</p>
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {new Date(version.createdAt).toLocaleString()}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant={active ? "secondary" : "outline"}
+                        disabled={active || revertState.loading}
+                        onClick={() => void onRevert(version.versionId)}
+                      >
+                        {active
+                          ? "Active"
+                          : revertState.loading && revertState.versionId === version.versionId
+                            ? "Reverting..."
+                            : "Revert"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            {threadError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                {threadError}
+              </div>
             )}
           </div>
-        </section>
+        </aside>
 
-        <section style={{ minHeight: 0, display: "grid", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 15 }}>Versions</h2>
-          <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, maxHeight: 180, overflow: "auto" }}>
-            {versions.map((version) => {
-              const active = bundle?.thread.activeVersionId === version.versionId;
-
-              return (
-                <div key={version.versionId} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{version.versionId.slice(0, 8)}</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>
-                    {new Date(version.createdAt).toLocaleString()}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={active || revertState.loading}
-                    onClick={() => void onRevert(version.versionId)}
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "5px 9px",
-                      fontSize: 12,
-                      background: active ? "#e2e8f0" : "white",
-                      cursor: active || revertState.loading ? "not-allowed" : "pointer"
-                    }}
-                  >
-                    {active
-                      ? "Active"
-                      : revertState.loading && revertState.versionId === version.versionId
-                        ? "Reverting..."
-                        : "Revert"}
-                  </button>
-                </div>
-              );
-            })}
+        <section className="p-6 lg:p-8">
+          <div
+            className={cn(
+              "min-h-[calc(100vh-4rem)] rounded-xl border border-dashed border-border bg-muted/40 p-6",
+              "overflow-auto"
+            )}
+          >
+            <DynamicRenderer spec={displaySpec ?? null} registry={registry} />
           </div>
         </section>
-
-        {threadError && (
-          <div style={{ color: "#b91c1c", fontSize: 13 }}>
-            {threadError}
-          </div>
-        )}
-      </aside>
-
-      <section style={{ padding: 28 }}>
-        <div
-          style={{
-            border: "1px dashed #94a3b8",
-            borderRadius: 14,
-            minHeight: "calc(100vh - 56px)",
-            padding: 20,
-            background: "#f1f5f9"
-          }}
-        >
-          <DynamicRenderer spec={displaySpec ?? null} registry={registry} />
-        </div>
-      </section>
+      </div>
     </main>
   );
 }
