@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { UISpec } from "@repo/contracts";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { generationReducer, initialGenerationState, streamGenerate } from "@repo/client-core";
+import type { ThreadBundle, UISpec, VersionRecord } from "@repo/contracts";
 import { DynamicRenderer, createStrictRegistry, type RegisteredComponentProps } from "@repo/renderer-react";
 
 function Card({ children, className }: RegisteredComponentProps) {
@@ -70,35 +71,44 @@ const registry = createStrictRegistry({
   Text: Text as any
 });
 
-const starterSpec: UISpec = {
-  root: "root",
-  elements: {
-    root: { type: "Card", props: {}, children: ["header", "content"] },
-    header: { type: "CardHeader", props: {}, children: ["title", "desc"] },
-    title: { type: "CardTitle", props: {}, children: ["title_text"] },
-    title_text: { type: "Text", props: { text: "Generative UI Studio" }, children: [] },
-    desc: { type: "CardDescription", props: {}, children: ["desc_text"] },
-    desc_text: { type: "Text", props: { text: "Submit prompts to iteratively mutate this canvas." }, children: [] },
-    content: { type: "CardContent", props: {}, children: ["cta"] },
-    cta: { type: "Button", props: {}, children: ["cta_text"] },
-    cta_text: { type: "Text", props: { text: "Awaiting generation" }, children: [] }
-  }
+type UiMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
 };
 
-type StudioStatus = "idle" | "streaming" | "error";
+type RevertState = {
+  versionId: string | null;
+  loading: boolean;
+};
 
-type VersionItem = { id: string; label: string; createdAt: string };
+function findActiveSpec(bundle: ThreadBundle): UISpec | null {
+  const activeId = bundle.thread.activeVersionId;
+  const active = bundle.versions.find((version) => version.versionId === activeId) ?? bundle.versions[0];
+  return active?.specSnapshot ?? null;
+}
+
+function statusFromState(state: ReturnType<typeof generationReducer>): "idle" | "streaming" | "error" {
+  if (state.error) {
+    return "error";
+  }
+  if (state.isStreaming) {
+    return "streaming";
+  }
+  return "idle";
+}
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState("");
-  const [status, setStatus] = useState<StudioStatus>("idle");
-  const [messages, setMessages] = useState<Array<{ role: "user" | "system"; content: string }>>([
-    { role: "system", content: "Thread initialized." }
-  ]);
-  const [spec, setSpec] = useState<UISpec>(starterSpec);
-  const [versions, setVersions] = useState<VersionItem[]>([
-    { id: "v1", label: "Initial state", createdAt: new Date().toISOString() }
-  ]);
+  const [bundle, setBundle] = useState<ThreadBundle | null>(null);
+  const [hydratedSpec, setHydratedSpec] = useState<UISpec | null>(null);
+  const [messages, setMessages] = useState<UiMessage[]>([]);
+  const [versions, setVersions] = useState<VersionRecord[]>([]);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const [revertState, setRevertState] = useState<RevertState>({ versionId: null, loading: false });
+  const [state, dispatch] = useReducer(generationReducer, initialGenerationState);
+
+  const status = statusFromState(state);
 
   const statusColor = useMemo(() => {
     switch (status) {
@@ -111,33 +121,126 @@ export default function HomePage() {
     }
   }, [status]);
 
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const refreshThread = async (threadId: string) => {
+    const response = await fetch(`/api/threads/${threadId}`, { method: "GET" });
+    if (!response.ok) {
+      throw new Error(`Failed to load thread (${response.status})`);
+    }
+
+    const nextBundle = (await response.json()) as ThreadBundle;
+    setBundle(nextBundle);
+    setVersions(nextBundle.versions);
+    setMessages(
+      nextBundle.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content
+      }))
+    );
+
+    const activeSpec = findActiveSpec(nextBundle);
+    if (activeSpec) {
+      setHydratedSpec(activeSpec);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const create = await fetch("/api/threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Studio Session" })
+        });
+
+        if (!create.ok) {
+          throw new Error(`Thread creation failed (${create.status})`);
+        }
+
+        const created = (await create.json()) as { thread: { threadId: string } };
+        if (!mounted) {
+          return;
+        }
+
+        await refreshThread(created.thread.threadId);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+
+        setThreadError(error instanceof Error ? error.message : "Failed to bootstrap thread.");
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = prompt.trim();
-    if (!text) {
+
+    if (!text || !bundle) {
       return;
     }
 
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setStatus("streaming");
+    setThreadError(null);
 
-    // Temporary placeholder lifecycle until API wiring lands.
-    setTimeout(() => {
-      setStatus("idle");
-      setVersions((prev) => [
-        {
-          id: `v${prev.length + 1}`,
-          label: `Prompt: ${text.slice(0, 24)}`,
-          createdAt: new Date().toISOString()
+    try {
+      await streamGenerate({
+        endpoint: "/api/generate",
+        body: {
+          threadId: bundle.thread.threadId,
+          prompt: text,
+          baseVersionId: bundle.thread.activeVersionId
         },
-        ...prev
-      ]);
-      setMessages((prev) => [...prev, { role: "system", content: "Generation pipeline not yet connected." }]);
-      setSpec((prev) => ({ ...prev }));
-    }, 350);
+        onEvent: (incomingEvent) => {
+          dispatch(incomingEvent);
 
-    setPrompt("");
+          if (incomingEvent.type === "done") {
+            void refreshThread(bundle.thread.threadId);
+          }
+        }
+      });
+      setPrompt("");
+    } catch (error) {
+      setThreadError(error instanceof Error ? error.message : "Generation failed.");
+    }
   };
+
+  const onRevert = async (versionId: string) => {
+    if (!bundle) {
+      return;
+    }
+
+    setRevertState({ versionId, loading: true });
+    setThreadError(null);
+
+    try {
+      const response = await fetch(`/api/threads/${bundle.thread.threadId}/revert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Revert failed (${response.status})`);
+      }
+
+      await refreshThread(bundle.thread.threadId);
+    } catch (error) {
+      setThreadError(error instanceof Error ? error.message : "Revert failed.");
+    } finally {
+      setRevertState({ versionId: null, loading: false });
+    }
+  };
+
+  const displaySpec = state.spec ?? hydratedSpec ?? (bundle ? findActiveSpec(bundle) : null);
 
   return (
     <main
@@ -185,42 +288,78 @@ export default function HomePage() {
           />
           <button
             type="submit"
+            disabled={!bundle || state.isStreaming}
             style={{
               border: 0,
               borderRadius: 10,
               padding: "10px 14px",
-              background: "var(--accent)",
+              background: !bundle || state.isStreaming ? "#94a3b8" : "var(--accent)",
               color: "white",
               fontWeight: 600,
-              cursor: "pointer"
+              cursor: !bundle || state.isStreaming ? "not-allowed" : "pointer"
             }}
           >
-            Send Prompt
+            {state.isStreaming ? "Generating..." : "Send Prompt"}
           </button>
         </form>
 
         <section style={{ minHeight: 0, display: "grid", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>Conversation</h2>
           <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, maxHeight: 200, overflow: "auto" }}>
-            {messages.map((message, index) => (
-              <p key={`${message.role}-${index}`} style={{ margin: "0 0 8px", fontSize: 13 }}>
-                <strong>{message.role}:</strong> {message.content}
-              </p>
-            ))}
+            {messages.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>No messages yet.</p>
+            ) : (
+              messages.map((message) => (
+                <p key={message.id} style={{ margin: "0 0 8px", fontSize: 13 }}>
+                  <strong>{message.role}:</strong> {message.content}
+                </p>
+              ))
+            )}
           </div>
         </section>
 
         <section style={{ minHeight: 0, display: "grid", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>Versions</h2>
           <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, maxHeight: 180, overflow: "auto" }}>
-            {versions.map((version) => (
-              <div key={version.id} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{version.id}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>{version.label}</div>
-              </div>
-            ))}
+            {versions.map((version) => {
+              const active = bundle?.thread.activeVersionId === version.versionId;
+
+              return (
+                <div key={version.versionId} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{version.versionId.slice(0, 8)}</div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>
+                    {new Date(version.createdAt).toLocaleString()}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={active || revertState.loading}
+                    onClick={() => void onRevert(version.versionId)}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "5px 9px",
+                      fontSize: 12,
+                      background: active ? "#e2e8f0" : "white",
+                      cursor: active || revertState.loading ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    {active
+                      ? "Active"
+                      : revertState.loading && revertState.versionId === version.versionId
+                        ? "Reverting..."
+                        : "Revert"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
+
+        {threadError && (
+          <div style={{ color: "#b91c1c", fontSize: 13 }}>
+            {threadError}
+          </div>
+        )}
       </aside>
 
       <section style={{ padding: 28 }}>
@@ -233,7 +372,7 @@ export default function HomePage() {
             background: "#f1f5f9"
           }}
         >
-          <DynamicRenderer spec={spec} registry={registry} />
+          <DynamicRenderer spec={displaySpec ?? null} registry={registry} />
         </div>
       </section>
     </main>
