@@ -1,0 +1,53 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@contracts/*": [
+        "../../packages/contracts/src/*"
+      ],
+      "@spec-engine/*": [
+        "../../packages/spec-engine/src/*"
+      ],
+      "@renderer-react/*": [
+        "../../packages/renderer-react/src/*"
+      ],
+      "@orchestrator/*": [
+        "../../packages/orchestrator/src/*"
+      ],
+      "@integrations/*": [
+        "../../packages/integrations/src/*"
+      ],
+      "@persistence/*": [
+        "../../packages/persistence/src/*"
+      ],
+      "@client-core/*": [
+        "../../packages/client-core/src/*"
+      ]
+    },
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "jsx": "preserve"
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
