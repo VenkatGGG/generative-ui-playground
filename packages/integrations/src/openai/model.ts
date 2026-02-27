@@ -1,9 +1,10 @@
 import type {
   ExtractComponentsInput,
-  ExtractComponentsResult,
   GenerationModelAdapter,
   StreamDesignInput
 } from "../interfaces";
+import { normalizeExtractComponentsResult } from "../shared/extract-components";
+import { parseSseData } from "../shared/sse";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_PASS1_MODEL = "gpt-4.1-mini";
@@ -62,31 +63,6 @@ function safeJsonParse(input: string): unknown {
   } catch {
     return null;
   }
-}
-
-function normalizeExtractComponents(parsed: unknown): ExtractComponentsResult {
-  if (!parsed || typeof parsed !== "object") {
-    return { components: [], intentType: "new", confidence: 0 };
-  }
-
-  const record = parsed as {
-    components?: unknown;
-    intentType?: unknown;
-    confidence?: unknown;
-  };
-
-  const components = Array.isArray(record.components)
-    ? record.components.filter((item): item is string => typeof item === "string")
-    : [];
-
-  const intentType = record.intentType === "modify" ? "modify" : "new";
-  const rawConfidence = typeof record.confidence === "number" ? record.confidence : 0;
-
-  return {
-    components,
-    intentType,
-    confidence: Math.max(0, Math.min(1, rawConfidence))
-  };
 }
 
 function extractAssistantText(payload: unknown): string {
@@ -161,50 +137,6 @@ async function callOpenAI(
   return extractAssistantText(payload);
 }
 
-async function* parseSseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
-
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const rawEvent = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
-
-      const dataLines = rawEvent
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart());
-
-      if (dataLines.length > 0) {
-        yield dataLines.join("\n");
-      }
-    }
-  }
-
-  buffer += decoder.decode();
-
-  if (buffer.trim().length > 0) {
-    const dataLines = buffer
-      .split("\n")
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart());
-
-    if (dataLines.length > 0) {
-      yield dataLines.join("\n");
-    }
-  }
-}
-
 async function* streamOpenAI(
   fetchImpl: FetchLike,
   endpoint: string,
@@ -272,7 +204,7 @@ export function createOpenAIGenerationModel(
       });
 
       const parsed = safeJsonParse(raw);
-      return normalizeExtractComponents(parsed);
+      return normalizeExtractComponentsResult(parsed);
     },
     streamDesign(input) {
       return streamOpenAI(fetchImpl, endpoint, options.apiKey, {

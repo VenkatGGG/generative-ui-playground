@@ -1,9 +1,10 @@
 import type {
   ExtractComponentsInput,
-  ExtractComponentsResult,
   GenerationModelAdapter,
   StreamDesignInput
 } from "../interfaces";
+import { normalizeExtractComponentsResult } from "../shared/extract-components";
+import { parseSseData } from "../shared/sse";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
@@ -124,33 +125,6 @@ function extractTextFromGeminiPayload(payload: unknown): string {
   return texts.join("");
 }
 
-function normalizeExtractComponents(parsed: unknown): ExtractComponentsResult {
-  if (!parsed || typeof parsed !== "object") {
-    return { components: [], intentType: "new", confidence: 0 };
-  }
-
-  const record = parsed as {
-    components?: unknown;
-    intentType?: unknown;
-    confidence?: unknown;
-  };
-
-  const components = Array.isArray(record.components)
-    ? record.components.filter((item): item is string => typeof item === "string")
-    : [];
-
-  const intentType = record.intentType === "modify" ? "modify" : "new";
-
-  const rawConfidence = typeof record.confidence === "number" ? record.confidence : 0;
-  const confidence = Math.max(0, Math.min(1, rawConfidence));
-
-  return {
-    components,
-    intentType,
-    confidence
-  };
-}
-
 async function callGemini(
   fetchImpl: FetchLike,
   endpoint: string,
@@ -171,50 +145,6 @@ async function callGemini(
 
   const payload = (await response.json()) as unknown;
   return extractTextFromGeminiPayload(payload);
-}
-
-async function* parseSseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
-
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const rawEvent = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
-
-      const dataLines = rawEvent
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart());
-
-      if (dataLines.length > 0) {
-        yield dataLines.join("\n");
-      }
-    }
-  }
-
-  buffer += decoder.decode();
-
-  if (buffer.trim().length > 0) {
-    const dataLines = buffer
-      .split("\n")
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart());
-
-    if (dataLines.length > 0) {
-      yield dataLines.join("\n");
-    }
-  }
 }
 
 async function* streamGemini(
@@ -273,7 +203,7 @@ export function createGeminiGenerationModel(
       const endpoint = buildGenerateEndpoint(baseUrl, pass1Model, options.apiKey);
       const raw = await callGemini(fetchImpl, endpoint, toRequest(toPass1Prompt(input)));
       const parsed = safeJsonParse(raw);
-      return normalizeExtractComponents(parsed);
+      return normalizeExtractComponentsResult(parsed);
     },
     streamDesign(input) {
       const endpoint = buildStreamEndpoint(baseUrl, pass2Model, options.apiKey);
