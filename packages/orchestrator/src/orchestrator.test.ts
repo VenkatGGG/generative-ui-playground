@@ -260,4 +260,38 @@ describe("runGeneration", () => {
     expect(events.includes("done")).toBe(true);
     expect(events.includes("error")).toBe(false);
   });
+
+  it("emits generation exception with concrete generationId when dependencies throw", async () => {
+    const deps = createDeps();
+    deps.model = {
+      ...deps.model,
+      async extractComponents() {
+        throw new Error("upstream-model-failure");
+      }
+    };
+
+    const events = [] as Array<{ type: string; code?: string; generationId?: string }>;
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "trigger exception",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      events.push({
+        type: event.type,
+        generationId: event.generationId,
+        code: "code" in event ? event.code : undefined
+      });
+    }
+
+    expect(events.some((event) => event.type === "done")).toBe(false);
+
+    const errorEvent = events.find((event) => event.type === "error");
+    expect(errorEvent?.code).toBe("GENERATION_EXCEPTION");
+    expect(errorEvent?.generationId).toBeDefined();
+    expect(errorEvent?.generationId?.length).toBeGreaterThan(0);
+  });
 });
