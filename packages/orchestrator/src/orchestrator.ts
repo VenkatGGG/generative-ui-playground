@@ -152,7 +152,7 @@ export async function* runGeneration(
 
     function* processCandidateNode(
       candidateNode: UIComponentNode
-    ): Generator<StreamEvent, "continue" | "fatal", void> {
+    ): Generator<StreamEvent, "continue" | string, void> {
       const candidateSpec = normalizeTreeToSpec(candidateNode);
       const result = validateAndDiffCandidate(candidateSpec);
 
@@ -169,14 +169,13 @@ export async function* runGeneration(
         }
 
         if (result.fatalError) {
-          void recordFailure(result.fatalError.code);
           yield {
             type: "error",
             generationId,
             code: result.fatalError.code,
             message: result.fatalError.message
           };
-          return "fatal";
+          return result.fatalError.code;
         }
 
         return "continue";
@@ -211,7 +210,8 @@ export async function* runGeneration(
         }
 
         const outcome = yield* processCandidateNode(candidateNode);
-        if (outcome === "fatal") {
+        if (outcome !== "continue") {
+          await recordFailure(outcome);
           return;
         }
       }
@@ -226,7 +226,8 @@ export async function* runGeneration(
         }
 
         const outcome = yield* processCandidateNode(candidateNode);
-        if (outcome === "fatal") {
+        if (outcome !== "continue") {
+          await recordFailure(outcome);
           return;
         }
       }
