@@ -187,21 +187,25 @@ describe("MongoPersistenceAdapter", () => {
       specHash: "hash-1",
       mcpContextUsed: ["Card", "Button"],
       warnings: [],
-      patchCount: 3
+      patchCount: 3,
+      durationMs: 25
     });
 
     expect(persisted.version.versionId).toBe("id-5");
     expect(persisted.message.role).toBe("assistant");
     expect(persisted.log.patchCount).toBe(3);
+    expect(persisted.log.durationMs).toBe(25);
 
     const failureLog = await adapter.recordGenerationFailure({
       threadId: thread.threadId,
       generationId: "gen-2",
       warningCount: 1,
       patchCount: 0,
+      durationMs: 7,
       errorCode: "GENERATION_EXCEPTION"
     });
     expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
+    expect(failureLog.durationMs).toBe(7);
 
     const reverted = await adapter.revertThread(thread.threadId, persisted.version.versionId);
     expect(reverted.versionId).toBe("id-8");

@@ -20,7 +20,8 @@ describe("InMemoryPersistenceAdapter", () => {
       specHash: "hash",
       mcpContextUsed: ["Card"],
       warnings: [],
-      patchCount: 2
+      patchCount: 2,
+      durationMs: 12
     });
 
     const failureLog = await adapter.recordGenerationFailure({
@@ -28,6 +29,7 @@ describe("InMemoryPersistenceAdapter", () => {
       generationId: "g2",
       warningCount: 1,
       patchCount: 0,
+      durationMs: 4,
       errorCode: "GENERATION_EXCEPTION"
     });
 
@@ -35,7 +37,9 @@ describe("InMemoryPersistenceAdapter", () => {
 
     expect(persisted.version.threadId).toBe(thread.threadId);
     expect(persisted.log.patchCount).toBe(2);
+    expect(persisted.log.durationMs).toBe(12);
     expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
+    expect(failureLog.durationMs).toBe(4);
     expect(bundle?.versions.length).toBeGreaterThan(0);
     expect(bundle?.messages.length).toBeGreaterThan(0);
   });

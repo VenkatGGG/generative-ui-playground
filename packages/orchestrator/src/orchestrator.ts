@@ -42,8 +42,10 @@ export async function* runGeneration(
   deps: OrchestratorDeps
 ): AsyncGenerator<StreamEvent> {
   const generationId = randomUUID();
+  const startedAt = Date.now();
   const warnings: Array<{ code: string; message: string }> = [];
   let patchCount = 0;
+  const getDurationMs = (): number => Math.max(0, Date.now() - startedAt);
   const recordFailure = async (errorCode: string): Promise<void> => {
     try {
       await deps.persistence.recordGenerationFailure({
@@ -51,6 +53,7 @@ export async function* runGeneration(
         generationId,
         warningCount: warnings.length,
         patchCount,
+        durationMs: getDurationMs(),
         errorCode
       });
     } catch {
@@ -243,7 +246,8 @@ export async function* runGeneration(
       specHash: hash,
       mcpContextUsed: pass1.components,
       warnings,
-      patchCount
+      patchCount,
+      durationMs: getDurationMs()
     });
 
     yield {

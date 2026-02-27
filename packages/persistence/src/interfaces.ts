@@ -21,6 +21,7 @@ export interface PersistGenerationInput {
   mcpContextUsed: string[];
   warnings: Array<{ code: string; message: string }>;
   patchCount: number;
+  durationMs: number;
 }
 
 export interface RecordGenerationFailureInput {
@@ -28,6 +29,7 @@ export interface RecordGenerationFailureInput {
   generationId: string;
   warningCount: number;
   patchCount: number;
+  durationMs: number;
   errorCode: string;
 }
 

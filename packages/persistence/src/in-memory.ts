@@ -140,6 +140,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       threadId: input.threadId,
       warningCount: input.warnings.length,
       patchCount: input.patchCount,
+      durationMs: input.durationMs,
       createdAt: timestamp
     };
 
@@ -170,6 +171,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       threadId: input.threadId,
       warningCount: input.warningCount,
       patchCount: input.patchCount,
+      durationMs: input.durationMs,
       errorCode: input.errorCode,
       createdAt: now()
     };

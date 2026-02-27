@@ -77,6 +77,7 @@ function createDeps(): {
           threadId: input.threadId,
           warningCount: input.warnings.length,
           patchCount: input.patchCount,
+          durationMs: input.durationMs,
           createdAt: now
         }
       };
@@ -88,6 +89,7 @@ function createDeps(): {
         threadId: input.threadId,
         warningCount: input.warningCount,
         patchCount: input.patchCount,
+        durationMs: input.durationMs,
         errorCode: input.errorCode,
         createdAt: now
       };
@@ -196,6 +198,7 @@ describe("runGeneration", () => {
           threadId: input.threadId,
           warningCount: input.warningCount,
           patchCount: input.patchCount,
+          durationMs: input.durationMs,
           errorCode: input.errorCode,
           createdAt: "2026-02-27T00:00:00.000Z"
         };
@@ -305,6 +308,7 @@ describe("runGeneration", () => {
           threadId: input.threadId,
           warningCount: input.warningCount,
           patchCount: input.patchCount,
+          durationMs: input.durationMs,
           errorCode: input.errorCode,
           createdAt: "2026-02-27T00:00:00.000Z"
         };

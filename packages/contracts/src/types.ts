@@ -88,6 +88,7 @@ export interface GenerationLogRecord {
   threadId: string;
   warningCount: number;
   patchCount: number;
+  durationMs: number;
   errorCode?: string;
   createdAt: string;
 }

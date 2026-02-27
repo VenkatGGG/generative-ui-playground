@@ -114,6 +114,7 @@ export const GenerationLogRecordSchema = z.object({
   threadId: z.string(),
   warningCount: z.number(),
   patchCount: z.number(),
+  durationMs: z.number(),
   errorCode: z.string().optional(),
   createdAt: z.string()
 });
