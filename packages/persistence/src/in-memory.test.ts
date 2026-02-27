@@ -43,4 +43,25 @@ describe("InMemoryPersistenceAdapter", () => {
     expect(bundle?.versions.length).toBeGreaterThan(0);
     expect(bundle?.messages.length).toBeGreaterThan(0);
   });
+
+  it("returns defensive copies to prevent external mutation of stored state", async () => {
+    const adapter = new InMemoryPersistenceAdapter();
+    const thread = await adapter.createThread({ title: "Mutation Test" });
+
+    const bundleA = await adapter.getThreadBundle(thread.threadId);
+    if (!bundleA) {
+      throw new Error("Expected bundle to exist");
+    }
+
+    bundleA.thread.title = "Mutated";
+    bundleA.versions[0]!.specHash = "tampered";
+
+    const bundleB = await adapter.getThreadBundle(thread.threadId);
+    if (!bundleB) {
+      throw new Error("Expected bundle to exist");
+    }
+
+    expect(bundleB.thread.title).toBe("Mutation Test");
+    expect(bundleB.versions[0]!.specHash).toBe("");
+  });
 });

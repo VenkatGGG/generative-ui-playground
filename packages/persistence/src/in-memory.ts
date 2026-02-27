@@ -24,6 +24,10 @@ function now() {
   return new Date().toISOString();
 }
 
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
+
 function createInitialSpec(): VersionRecord["specSnapshot"] {
   return {
     root: "",
@@ -58,13 +62,13 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     };
 
     this.store.set(threadId, {
-      thread,
+      thread: clone(thread),
       messages: [],
-      versions: [initialVersion],
+      versions: [clone(initialVersion)],
       logs: []
     });
 
-    return thread;
+    return clone(thread);
   }
 
   public async getThreadBundle(threadId: string): Promise<ThreadBundle | null> {
@@ -74,9 +78,9 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     }
 
     return {
-      thread: state.thread,
-      messages: [...state.messages],
-      versions: [...state.versions]
+      thread: clone(state.thread),
+      messages: clone(state.messages),
+      versions: clone(state.versions)
     };
   }
 
@@ -87,10 +91,13 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     }
 
     if (!versionId) {
-      return state.versions.find((version) => version.versionId === state.thread.activeVersionId) ?? null;
+      const active =
+        state.versions.find((version) => version.versionId === state.thread.activeVersionId) ?? null;
+      return active ? clone(active) : null;
     }
 
-    return state.versions.find((version) => version.versionId === versionId) ?? null;
+    const matched = state.versions.find((version) => version.versionId === versionId) ?? null;
+    return matched ? clone(matched) : null;
   }
 
   public async persistGeneration(
@@ -150,11 +157,11 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     state.thread.activeVersionId = version.versionId;
     state.thread.updatedAt = timestamp;
 
-    return {
+    return clone({
       version,
       message: assistantMessage,
       log
-    };
+    });
   }
 
   public async recordGenerationFailure(
@@ -177,7 +184,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     };
 
     state.logs.push(log);
-    return log;
+    return clone(log);
   }
 
   public async revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord> {
@@ -206,6 +213,6 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
     state.thread.activeVersionId = revertVersion.versionId;
     state.thread.updatedAt = timestamp;
 
-    return revertVersion;
+    return clone(revertVersion);
   }
 }
