@@ -28,6 +28,11 @@ Create a thread.
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }
 ```
 
+### Error `500` (Preflight persistence/internal)
+```json
+{ "error": "INTERNAL_SERVER_ERROR", "message": "..." }
+```
+
 ### Error `500` (Persistence/Internal)
 ```json
 { "error": "INTERNAL_SERVER_ERROR", "message": "..." }
