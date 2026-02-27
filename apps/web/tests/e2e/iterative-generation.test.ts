@@ -14,6 +14,11 @@ interface ThreadBundleLike {
     threadId: string;
     activeVersionId: string;
   };
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    meta?: Record<string, unknown>;
+  }>;
   versions: Array<{
     versionId: string;
     baseVersionId: string | null;
@@ -125,5 +130,20 @@ describe("iterative generation e2e", () => {
     expect(bundle.versions.some((version) => version.versionId === version1)).toBe(true);
     expect(bundle.versions.some((version) => version.versionId === version2)).toBe(true);
     expect(bundle.versions.some((version) => version.versionId === reverted.version.versionId)).toBe(true);
+
+    const assistantMessages = bundle.messages.filter((message) => message.role === "assistant");
+    expect(assistantMessages.length).toBe(2);
+
+    for (const message of assistantMessages) {
+      expect(typeof message.meta?.warningCount).toBe("number");
+      expect(typeof message.meta?.patchCount).toBe("number");
+      expect(typeof message.meta?.durationMs).toBe("number");
+      expect(typeof message.meta?.specHash).toBe("string");
+      expect(Array.isArray(message.meta?.mcpContextUsed)).toBe(true);
+
+      expect((message.meta?.warningCount as number) >= 0).toBe(true);
+      expect((message.meta?.patchCount as number) > 0).toBe(true);
+      expect((message.meta?.durationMs as number) >= 0).toBe(true);
+    }
   });
 });
