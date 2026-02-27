@@ -19,12 +19,14 @@ describe("InMemoryPersistenceAdapter", () => {
       },
       specHash: "hash",
       mcpContextUsed: ["Card"],
-      warnings: []
+      warnings: [],
+      patchCount: 2
     });
 
     const bundle = await adapter.getThreadBundle(thread.threadId);
 
     expect(persisted.version.threadId).toBe(thread.threadId);
+    expect(persisted.log.patchCount).toBe(2);
     expect(bundle?.versions.length).toBeGreaterThan(0);
     expect(bundle?.messages.length).toBeGreaterThan(0);
   });

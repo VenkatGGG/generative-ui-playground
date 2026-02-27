@@ -186,11 +186,13 @@ describe("MongoPersistenceAdapter", () => {
       },
       specHash: "hash-1",
       mcpContextUsed: ["Card", "Button"],
-      warnings: []
+      warnings: [],
+      patchCount: 3
     });
 
     expect(persisted.version.versionId).toBe("id-5");
     expect(persisted.message.role).toBe("assistant");
+    expect(persisted.log.patchCount).toBe(3);
 
     const reverted = await adapter.revertThread(thread.threadId, persisted.version.versionId);
     expect(reverted.versionId).toBe("id-7");

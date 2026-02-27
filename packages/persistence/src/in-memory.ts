@@ -134,7 +134,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       generationId: input.generationId,
       threadId: input.threadId,
       warningCount: input.warnings.length,
-      patchCount: 0,
+      patchCount: input.patchCount,
       createdAt: timestamp
     };
 

@@ -20,6 +20,7 @@ export interface PersistGenerationInput {
   specHash: string;
   mcpContextUsed: string[];
   warnings: Array<{ code: string; message: string }>;
+  patchCount: number;
 }
 
 export interface PersistenceAdapter {

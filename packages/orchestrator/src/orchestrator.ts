@@ -33,6 +33,7 @@ export async function* runGeneration(
 ): AsyncGenerator<StreamEvent> {
   const generationId = randomUUID();
   const warnings: Array<{ code: string; message: string }> = [];
+  let patchCount = 0;
 
   const threadBundle = await deps.persistence.getThreadBundle(request.threadId);
   if (!threadBundle) {
@@ -121,6 +122,7 @@ export async function* runGeneration(
 
       const patches = diffSpecs(canonicalSpec, candidateSpec);
       for (const patch of patches) {
+        patchCount += 1;
         yield {
           type: "patch",
           generationId,
@@ -140,6 +142,7 @@ export async function* runGeneration(
       if (validation.valid) {
         const patches = diffSpecs(canonicalSpec, candidateSpec);
         for (const patch of patches) {
+          patchCount += 1;
           yield {
             type: "patch",
             generationId,
@@ -160,7 +163,8 @@ export async function* runGeneration(
     specSnapshot: canonicalSpec,
     specHash: hash,
     mcpContextUsed: pass1.components,
-    warnings
+    warnings,
+    patchCount
   });
 
   yield {
