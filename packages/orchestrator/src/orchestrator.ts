@@ -10,6 +10,12 @@ import { normalizeTreeToSpec, validateSpec, diffSpecs } from "@repo/spec-engine"
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
+import {
+  buildConstraintSet,
+  canonicalizeNodeTypes,
+  validateConstraintSet,
+  type ConstraintViolation
+} from "./constraints";
 
 export interface OrchestratorDeps {
   model: GenerationModelAdapter;
@@ -29,13 +35,14 @@ function parseCandidateObject(input: string): UIComponentNode | null {
       return null;
     }
 
-    return validated.data as UIComponentNode;
+    return canonicalizeNodeTypes(validated.data as UIComponentNode);
   } catch {
     return null;
   }
 }
 
 const fatalValidationCodes = new Set(["MAX_DEPTH_EXCEEDED", "MAX_NODES_EXCEEDED"]);
+const MAX_PASS2_ATTEMPTS = 3;
 
 function summarizePrompt(prompt: string): string {
   const trimmed = prompt.trim().replace(/\s+/g, " ");
@@ -73,6 +80,22 @@ function buildAssistantReasoningText(input: {
     `Applied ${input.patchCount} patch(es); final spec has ${input.finalElementCount} element(s).`,
     warnings
   ].join(" ");
+}
+
+function buildRetryPrompt(basePrompt: string, violations: ConstraintViolation[], attempt: number): string {
+  if (violations.length === 0) {
+    return basePrompt;
+  }
+
+  const lines = violations.map((violation) => `- ${violation.message}`);
+
+  return [
+    basePrompt,
+    "",
+    `Retry attempt ${attempt}. You must satisfy ALL requirements below:`,
+    ...lines,
+    "Return complete UIComponentNode JSON snapshots only."
+  ].join("\n");
 }
 
 export async function* runGeneration(
@@ -148,18 +171,12 @@ export async function* runGeneration(
     yield { type: "status", generationId, stage: "mcp_fetch_context" };
     const mcpContext = await deps.mcp.fetchContext(pass1.components);
 
-    yield { type: "status", generationId, stage: "pass2_stream_design" };
-
-    const allowedComponentTypes = new Set([
-      ...pass1.components,
-      "Text",
-      "Card",
-      "CardHeader",
-      "CardTitle",
-      "CardDescription",
-      "CardContent",
-      "Button"
-    ]);
+    const constraints = buildConstraintSet({
+      prompt: request.prompt,
+      pass1,
+      mcpContext
+    });
+    const allowedComponentTypes = constraints.allowedComponentTypes;
 
     const validateAndDiffCandidate = (
       candidateSpec: UISpec
@@ -167,6 +184,7 @@ export async function* runGeneration(
       | { type: "valid"; patches: ReturnType<typeof diffSpecs>; nextSpec: UISpec }
       | {
           type: "invalid";
+          violations: ConstraintViolation[];
           warnings: Array<{ code: string; message: string }>;
           fatalError: { code: string; message: string } | null;
         } => {
@@ -181,6 +199,7 @@ export async function* runGeneration(
 
         return {
           type: "invalid",
+          violations: [],
           warnings: nextWarnings,
           fatalError: fatalIssue
             ? {
@@ -191,6 +210,19 @@ export async function* runGeneration(
         };
       }
 
+      const constraintViolations = validateConstraintSet(candidateSpec, constraints);
+      if (constraintViolations.length > 0) {
+        return {
+          type: "invalid",
+          violations: constraintViolations,
+          warnings: constraintViolations.map((violation) => ({
+            code: violation.code,
+            message: violation.message
+          })),
+          fatalError: null
+        };
+      }
+
       return {
         type: "valid",
         patches: diffSpecs(canonicalSpec, candidateSpec),
@@ -198,15 +230,16 @@ export async function* runGeneration(
       };
     };
 
-    let buffer = "";
-
     function* processCandidateNode(
       candidateNode: UIComponentNode
-    ): Generator<StreamEvent, "continue" | string, void> {
+    ): Generator<StreamEvent, "accepted" | "rejected" | string, void> {
       const candidateSpec = normalizeTreeToSpec(candidateNode);
       const result = validateAndDiffCandidate(candidateSpec);
 
       if (result.type === "invalid") {
+        if (result.violations.length > 0) {
+          lastConstraintViolations = result.violations;
+        }
         for (const issue of result.warnings) {
           const warning = {
             type: "warning" as const,
@@ -228,7 +261,7 @@ export async function* runGeneration(
           return result.fatalError.code;
         }
 
-        return "continue";
+        return "rejected";
       }
 
       for (const patch of result.patches) {
@@ -241,47 +274,112 @@ export async function* runGeneration(
       }
 
       canonicalSpec = result.nextSpec;
-      return "continue";
+      return "accepted";
     }
 
-    for await (const chunk of deps.model.streamDesign({
-      prompt: request.prompt,
-      previousSpec: baseVersion?.specSnapshot ?? null,
-      componentContext: mcpContext
-    })) {
-      appendModelOutput(chunk);
-      buffer += chunk;
-      const extracted = extractCompleteJsonObjects(buffer);
-      buffer = extracted.remainder;
+    let acceptedCandidate = false;
+    let sawAnyCandidate = false;
+    let lastConstraintViolations: ConstraintViolation[] = [];
 
-      for (const jsonObject of extracted.objects) {
-        const candidateNode = parseCandidateObject(jsonObject);
-        if (!candidateNode) {
-          continue;
-        }
+    for (let attempt = 1; attempt <= MAX_PASS2_ATTEMPTS; attempt += 1) {
+      yield {
+        type: "status",
+        generationId,
+        stage: attempt === 1 ? "pass2_stream_design" : `pass2_stream_design_retry_${attempt}`
+      };
 
-        const outcome = yield* processCandidateNode(candidateNode);
-        if (outcome !== "continue") {
-          await recordFailure(outcome);
-          return;
+      let buffer = "";
+      const streamPrompt =
+        attempt === 1
+          ? request.prompt
+          : buildRetryPrompt(request.prompt, lastConstraintViolations, attempt);
+
+      for await (const chunk of deps.model.streamDesign({
+        prompt: streamPrompt,
+        previousSpec: baseVersion?.specSnapshot ?? null,
+        componentContext: mcpContext
+      })) {
+        appendModelOutput(chunk);
+        buffer += chunk;
+        const extracted = extractCompleteJsonObjects(buffer);
+        buffer = extracted.remainder;
+
+        for (const jsonObject of extracted.objects) {
+          const candidateNode = parseCandidateObject(jsonObject);
+          if (!candidateNode) {
+            continue;
+          }
+
+          sawAnyCandidate = true;
+          const outcome = yield* processCandidateNode(candidateNode);
+          if (outcome === "accepted") {
+            acceptedCandidate = true;
+            continue;
+          }
+
+          if (outcome !== "rejected") {
+            await recordFailure(outcome);
+            return;
+          }
         }
+      }
+
+      if (buffer.trim()) {
+        const extracted = extractCompleteJsonObjects(buffer);
+        for (const jsonObject of extracted.objects) {
+          const candidateNode = parseCandidateObject(jsonObject);
+          if (!candidateNode) {
+            continue;
+          }
+
+          sawAnyCandidate = true;
+          const outcome = yield* processCandidateNode(candidateNode);
+          if (outcome === "accepted") {
+            acceptedCandidate = true;
+            continue;
+          }
+
+          if (outcome !== "rejected") {
+            await recordFailure(outcome);
+            return;
+          }
+        }
+      }
+
+      const finalViolations = validateConstraintSet(canonicalSpec, constraints);
+      if (finalViolations.length === 0 && (pass1.intentType !== "new" || patchCount > 0)) {
+        acceptedCandidate = true;
+        lastConstraintViolations = [];
+        break;
+      }
+
+      lastConstraintViolations = finalViolations;
+      if (attempt < MAX_PASS2_ATTEMPTS) {
+        const retryWarning = {
+          type: "warning" as const,
+          generationId,
+          code: "CONSTRAINT_RETRY",
+          message: `Retrying generation to satisfy constraints (attempt ${attempt + 1}/${MAX_PASS2_ATTEMPTS}).`
+        };
+        warnings.push({ code: retryWarning.code, message: retryWarning.message });
+        yield retryWarning;
       }
     }
 
-    if (buffer.trim()) {
-      const extracted = extractCompleteJsonObjects(buffer);
-      for (const jsonObject of extracted.objects) {
-        const candidateNode = parseCandidateObject(jsonObject);
-        if (!candidateNode) {
-          continue;
-        }
+    if (!acceptedCandidate || (pass1.intentType === "new" && patchCount === 0)) {
+      const reason =
+        !sawAnyCandidate || lastConstraintViolations.length === 0
+          ? "Model did not produce a valid non-empty constrained candidate."
+          : lastConstraintViolations.map((violation) => violation.message).join(" ");
 
-        const outcome = yield* processCandidateNode(candidateNode);
-        if (outcome !== "continue") {
-          await recordFailure(outcome);
-          return;
-        }
-      }
+      await recordFailure("MCP_CONSTRAINT_NOT_SATISFIED");
+      yield {
+        type: "error",
+        generationId,
+        code: "MCP_CONSTRAINT_NOT_SATISFIED",
+        message: reason
+      };
+      return;
     }
 
     const hash = specHash(canonicalSpec);

@@ -112,7 +112,10 @@ function createDeps(): {
       yield JSON.stringify({
         id: "root",
         type: "Card",
-        children: [{ id: "txt", type: "Text", children: ["hello"] }]
+        children: [
+          { id: "txt", type: "Text", children: ["hello"] },
+          { id: "cta", type: "Button", children: ["Continue"] }
+        ]
       });
     }
   };
@@ -232,12 +235,28 @@ describe("runGeneration", () => {
 
   it("handles partial chunked json objects without newline delimiters", async () => {
     const deps = createDeps();
+    const firstSnapshot = JSON.stringify({
+      id: "root",
+      type: "Card",
+      children: [
+        { id: "txt", type: "Text", children: ["hello"] },
+        { id: "cta", type: "Button", children: ["Continue"] }
+      ]
+    });
+    const secondSnapshot = JSON.stringify({
+      id: "root",
+      type: "Card",
+      children: [
+        { id: "txt", type: "Text", children: ["hello v2"] },
+        { id: "cta", type: "Button", children: ["Continue"] }
+      ]
+    });
 
     deps.model = {
       ...deps.model,
       async *streamDesign() {
-        yield '{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"hel';
-        yield 'lo\"]}]}{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"hello v2\"]}]}';
+        yield firstSnapshot.slice(0, 80);
+        yield firstSnapshot.slice(80) + secondSnapshot;
       }
     };
 
@@ -265,11 +284,19 @@ describe("runGeneration", () => {
 
   it("skips malformed snapshots and continues with valid snapshots", async () => {
     const deps = createDeps();
+    const validSnapshot = JSON.stringify({
+      id: "root",
+      type: "Card",
+      children: [
+        { id: "txt", type: "Text", children: ["ok"] },
+        { id: "cta", type: "Button", children: ["Continue"] }
+      ]
+    });
 
     deps.model = {
       ...deps.model,
       async *streamDesign() {
-        yield '{\"type\":\"Card\"}{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"ok\"]}]}';
+        yield `{"type":"Card"}${validSnapshot}`;
       }
     };
 
@@ -288,6 +315,125 @@ describe("runGeneration", () => {
 
     expect(events.includes("done")).toBe(true);
     expect(events.includes("error")).toBe(false);
+  });
+
+  it("retries pass2 when constraint checks fail and then succeeds", async () => {
+    const deps = createDeps();
+    const prompts: string[] = [];
+    let streamCall = 0;
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign(input) {
+        prompts.push(input.prompt);
+        streamCall += 1;
+
+        if (streamCall === 1) {
+          yield JSON.stringify({
+            id: "root",
+            type: "Card",
+            children: [{ id: "txt", type: "Text", children: ["first try"] }]
+          });
+          return;
+        }
+
+        yield JSON.stringify({
+          id: "root",
+          type: "Card",
+          children: [
+            { id: "txt", type: "Text", children: ["Pro Plan"] },
+            { id: "cta", type: "Button", children: ["Continue"] }
+          ]
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: 'Create a card with title "Pro Plan" and primary button',
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(streamCall).toBe(2);
+    expect(prompts[1]?.includes("Retry attempt 2")).toBe(true);
+    expect(warningCodes.includes("CONSTRAINT_RETRY")).toBe(true);
+    expect(eventTypes.includes("done")).toBe(true);
+    expect(eventTypes.includes("error")).toBe(false);
+  });
+
+  it("fails with MCP_CONSTRAINT_NOT_SATISFIED when all retries stay invalid", async () => {
+    const deps = createDeps();
+    let failureLogCode: string | null = null;
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign() {
+        yield JSON.stringify({
+          id: "root",
+          type: "Card",
+          children: [{ id: "txt", type: "Text", children: ["still invalid"] }]
+        });
+      }
+    };
+
+    deps.persistence = {
+      ...deps.persistence,
+      async recordGenerationFailure(input) {
+        failureLogCode = input.errorCode;
+        return {
+          id: "failed-log",
+          generationId: input.generationId,
+          threadId: input.threadId,
+          warningCount: input.warningCount,
+          patchCount: input.patchCount,
+          durationMs: input.durationMs,
+          errorCode: input.errorCode,
+          createdAt: "2026-02-27T00:00:00.000Z"
+        };
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const terminalEvents: Array<{ type: string; code?: string }> = [];
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "Build a card with a primary button",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+      if (event.type === "error" || event.type === "done") {
+        terminalEvents.push({
+          type: event.type,
+          code: "code" in event ? event.code : undefined
+        });
+      }
+    }
+
+    expect(warningCodes.filter((code) => code === "CONSTRAINT_RETRY").length).toBe(2);
+    expect(terminalEvents).toEqual([
+      {
+        type: "error",
+        code: "MCP_CONSTRAINT_NOT_SATISFIED"
+      }
+    ]);
+    expect(failureLogCode).toBe("MCP_CONSTRAINT_NOT_SATISFIED");
   });
 
   it("emits generation exception with concrete generationId when dependencies throw", async () => {

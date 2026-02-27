@@ -9,7 +9,7 @@ import {
 } from "@repo/client-core";
 import type { ThreadBundle, UISpec, VersionRecord } from "@repo/contracts";
 import { DynamicRenderer, createStrictRegistry, type RegisteredComponentProps } from "@repo/renderer-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
   Card,
@@ -34,6 +34,13 @@ function asButtonVariant(value: unknown): ButtonProps["variant"] | undefined {
 
 function asButtonSize(value: unknown): ButtonProps["size"] | undefined {
   if (value === "default" || value === "sm" || value === "lg") {
+    return value;
+  }
+  return undefined;
+}
+
+function asBadgeVariant(value: unknown): BadgeProps["variant"] | undefined {
+  if (value === "default" || value === "outline" || value === "secondary" || value === "destructive") {
     return value;
   }
   return undefined;
@@ -71,6 +78,14 @@ function RegistryButton({ children, className, variant, size }: RegisteredCompon
   );
 }
 
+function RegistryBadge({ children, className, variant }: RegisteredComponentProps) {
+  return (
+    <Badge className={asString(className)} variant={asBadgeVariant(variant)}>
+      {children}
+    </Badge>
+  );
+}
+
 const registry = createStrictRegistry({
   Card: RegistryCard,
   CardHeader: RegistryCardHeader,
@@ -78,6 +93,7 @@ const registry = createStrictRegistry({
   CardDescription: RegistryCardDescription,
   CardContent: RegistryCardContent,
   Button: RegistryButton,
+  Badge: RegistryBadge,
   Text: RegistryText
 });
 
