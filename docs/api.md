@@ -28,12 +28,22 @@ Create a thread.
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }
 ```
 
+### Error `500` (Persistence/Internal)
+```json
+{ "error": "INTERNAL_SERVER_ERROR", "message": "..." }
+```
+
 ## GET `/api/threads/:threadId`
 Returns full thread bundle.
 
 ### Error `500`
 ```json
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }
+```
+
+### Error `500` (Persistence/Internal)
+```json
+{ "error": "INTERNAL_SERVER_ERROR", "message": "..." }
 ```
 
 ## POST `/api/threads/:threadId/revert`
@@ -47,6 +57,11 @@ Reverts active spec to a previous version and creates a new lineage version.
 ### Error `500`
 ```json
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }
+```
+
+### Error `500` (Non-not-found failures)
+```json
+{ "error": "INTERNAL_SERVER_ERROR", "message": "..." }
 ```
 
 ## POST `/api/generate`
