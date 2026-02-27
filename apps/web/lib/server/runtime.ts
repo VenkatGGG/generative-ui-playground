@@ -1,15 +1,15 @@
 import {
-  createGeminiGenerationModel,
-  createOpenAIGenerationModel,
+  createGenerationModelAdapter,
   createMcpHttpAdapter,
   createStubGenerationModel,
-  createStubMcpAdapter
+  createStubMcpAdapter,
+  type LLMProvider,
+  type ModelProviderConfig
 } from "@repo/integrations";
 import { InMemoryPersistenceAdapter } from "@repo/persistence";
 import type { OrchestratorDeps } from "@repo/orchestrator";
 
 type RuntimeMode = "stub" | "real";
-type LlmProvider = "gemini" | "openai";
 
 let runtimeDepsPromise: Promise<OrchestratorDeps> | null = null;
 
@@ -18,7 +18,7 @@ function resolveMode(): RuntimeMode {
   return raw === "real" ? "real" : "stub";
 }
 
-function resolveLlmProvider(): LlmProvider {
+function resolveLlmProvider(): LLMProvider {
   const raw = process.env.LLM_PROVIDER?.toLowerCase();
   if (!raw || raw === "gemini") {
     return "gemini";
@@ -46,20 +46,28 @@ async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
   const mongoDbName = readEnv("MONGODB_DB_NAME");
   const llmProvider = resolveLlmProvider();
 
-  const model =
+  const modelConfig: ModelProviderConfig =
     llmProvider === "openai"
-      ? createOpenAIGenerationModel({
-          apiKey: readEnv("OPENAI_API_KEY"),
-          baseUrl: process.env.OPENAI_BASE_URL,
-          pass1Model: process.env.OPENAI_PASS1_MODEL,
-          pass2Model: process.env.OPENAI_PASS2_MODEL
-        })
-      : createGeminiGenerationModel({
-          apiKey: readEnv("GEMINI_API_KEY"),
-          baseUrl: process.env.GEMINI_BASE_URL,
-          pass1Model: process.env.GEMINI_PASS1_MODEL,
-          pass2Model: process.env.GEMINI_PASS2_MODEL
-        });
+      ? {
+          provider: "openai",
+          options: {
+            apiKey: readEnv("OPENAI_API_KEY"),
+            baseUrl: process.env.OPENAI_BASE_URL,
+            pass1Model: process.env.OPENAI_PASS1_MODEL,
+            pass2Model: process.env.OPENAI_PASS2_MODEL
+          }
+        }
+      : {
+          provider: "gemini",
+          options: {
+            apiKey: readEnv("GEMINI_API_KEY"),
+            baseUrl: process.env.GEMINI_BASE_URL,
+            pass1Model: process.env.GEMINI_PASS1_MODEL,
+            pass2Model: process.env.GEMINI_PASS2_MODEL
+          }
+        };
+
+  const model = createGenerationModelAdapter(modelConfig);
 
   const mcp = createMcpHttpAdapter({
     endpoint: mcpEndpoint,
