@@ -60,3 +60,5 @@ type StreamEvent =
   | { type: "done"; generationId: string; versionId: string; specHash: string }
   | { type: "error"; generationId: string; code: string; message: string };
 ```
+
+Failed generations also write a `generationLogs` entry with the terminal `errorCode`.

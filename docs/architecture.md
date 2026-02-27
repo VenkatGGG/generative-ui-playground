@@ -12,6 +12,7 @@
 8. Backend streams SSE JSONL patch/status events.
 9. Client applies patches incrementally to local spec.
 10. Final version/messages/logs are persisted and `done` event is emitted.
+11. Failed generations emit `error` events and are logged with `generationLogs.errorCode`.
 
 ## Core Guarantees
 
@@ -20,6 +21,7 @@
 - Registry is strict and unknown types fall back safely.
 - Error boundaries isolate rendering crashes.
 - Iterative refinement uses version lineage, not mutable state rewrites.
+- Failure paths are logged for analytics without mutating successful version lineage.
 
 ## Module Responsibilities
 
