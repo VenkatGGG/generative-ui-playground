@@ -68,7 +68,7 @@ function createDeps(): {
           threadId: input.threadId,
           generationId: input.generationId,
           role: "assistant",
-          content: "ok",
+          content: input.assistantResponseText,
           createdAt: now
         },
         log: {

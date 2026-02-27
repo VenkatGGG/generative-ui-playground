@@ -45,7 +45,16 @@ export async function* runGeneration(
   const startedAt = Date.now();
   const warnings: Array<{ code: string; message: string }> = [];
   let patchCount = 0;
+  let modelOutputText = "";
   const getDurationMs = (): number => Math.max(0, Date.now() - startedAt);
+  const appendModelOutput = (chunk: string): void => {
+    if (chunk.length === 0 || modelOutputText.length >= 20_000) {
+      return;
+    }
+
+    const remaining = 20_000 - modelOutputText.length;
+    modelOutputText += chunk.slice(0, remaining);
+  };
   const recordFailure = async (errorCode: string): Promise<void> => {
     try {
       await deps.persistence.recordGenerationFailure({
@@ -202,6 +211,7 @@ export async function* runGeneration(
       previousSpec: baseVersion?.specSnapshot ?? null,
       componentContext: mcpContext
     })) {
+      appendModelOutput(chunk);
       buffer += chunk;
       const extracted = extractCompleteJsonObjects(buffer);
       buffer = extracted.remainder;
@@ -237,10 +247,12 @@ export async function* runGeneration(
     }
 
     const hash = specHash(canonicalSpec);
+    const assistantResponseText = modelOutputText.trim() || JSON.stringify(canonicalSpec);
     const persisted = await deps.persistence.persistGeneration({
       threadId: request.threadId,
       generationId,
       prompt: request.prompt,
+      assistantResponseText,
       baseVersionId: request.baseVersionId,
       specSnapshot: canonicalSpec,
       specHash: hash,

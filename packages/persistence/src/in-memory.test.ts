@@ -10,6 +10,7 @@ describe("InMemoryPersistenceAdapter", () => {
       threadId: thread.threadId,
       generationId: "g1",
       prompt: "Build card",
+      assistantResponseText: "{\"id\":\"root\",\"type\":\"Card\"}",
       baseVersionId: null,
       specSnapshot: {
         root: "root",
@@ -36,6 +37,7 @@ describe("InMemoryPersistenceAdapter", () => {
     const bundle = await adapter.getThreadBundle(thread.threadId);
 
     expect(persisted.version.threadId).toBe(thread.threadId);
+    expect(persisted.message.content).toContain("\"type\":\"Card\"");
     expect(persisted.log.patchCount).toBe(2);
     expect(persisted.log.durationMs).toBe(12);
     expect(persisted.message.meta?.patchCount).toBe(2);
