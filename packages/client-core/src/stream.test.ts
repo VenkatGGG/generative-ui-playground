@@ -50,6 +50,43 @@ describe("streamGenerate", () => {
     expect(events).toEqual(["status", "done"]);
   });
 
+  it("consumes CRLF-framed SSE events across chunk boundaries", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('data: {"type":"status","generationId":"g1","stage":"pass1"}\r\n')
+        );
+        controller.enqueue(encoder.encode("\r\n"));
+        controller.enqueue(
+          encoder.encode('data: {"type":"done","generationId":"g1","versionId":"v1","specHash":"h1"}\r\n')
+        );
+        controller.enqueue(encoder.encode("\r\n"));
+        controller.close();
+      }
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      })
+    );
+
+    const events: string[] = [];
+    await streamGenerate({
+      endpoint: "/api/generate",
+      body: { threadId: "t1", prompt: "build", baseVersionId: null },
+      onEvent: (event) => {
+        events.push(event.type);
+      }
+    });
+
+    expect(events).toEqual(["status", "done"]);
+  });
+
   it("throws stream interruption error when terminal event is missing", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

@@ -42,6 +42,34 @@ function parseDataLine(line: string): StreamEvent | null {
   }
 }
 
+function findEventBoundary(buffer: string): { index: number; length: number } | null {
+  const match = /\r?\n\r?\n/.exec(buffer);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+
+  return {
+    index: match.index,
+    length: match[0].length
+  };
+}
+
+function parseEventChunk(chunk: string): StreamEvent[] {
+  const events: StreamEvent[] = [];
+  for (const line of chunk.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) {
+      continue;
+    }
+
+    const event = parseDataLine(line);
+    if (event) {
+      events.push(event);
+    }
+  }
+
+  return events;
+}
+
 export async function streamGenerate(options: StreamGenerateOptions): Promise<void> {
   const response = await fetch(options.endpoint, {
     method: "POST",
@@ -69,45 +97,35 @@ export async function streamGenerate(options: StreamGenerateOptions): Promise<vo
     }
 
     buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split("\n\n");
-    buffer = chunks.pop() ?? "";
+    let boundary = findEventBoundary(buffer);
+    while (boundary) {
+      const chunk = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary.length);
 
-    for (const chunk of chunks) {
-      const lines = chunk.split("\n");
-      for (const line of lines) {
-        if (!line.startsWith("data:")) {
-          continue;
+      for (const event of parseEventChunk(chunk)) {
+        try {
+          options.onEvent(event);
+        } catch (error) {
+          await reader.cancel().catch(() => undefined);
+          throw error;
         }
-        const event = parseDataLine(line);
-        if (event) {
-          try {
-            options.onEvent(event);
-          } catch (error) {
-            await reader.cancel().catch(() => undefined);
-            throw error;
-          }
 
-          if (event.type === "done" || event.type === "error") {
-            terminalEventSeen = true;
-            await reader.cancel().catch(() => undefined);
-            return;
-          }
+        if (event.type === "done" || event.type === "error") {
+          terminalEventSeen = true;
+          await reader.cancel().catch(() => undefined);
+          return;
         }
       }
+
+      boundary = findEventBoundary(buffer);
     }
   }
 
   if (buffer.trim()) {
-    for (const line of buffer.split("\n")) {
-      if (!line.startsWith("data:")) {
-        continue;
-      }
-      const event = parseDataLine(line);
-      if (event) {
-        options.onEvent(event);
-        if (event.type === "done" || event.type === "error") {
-          terminalEventSeen = true;
-        }
+    for (const event of parseEventChunk(buffer)) {
+      options.onEvent(event);
+      if (event.type === "done" || event.type === "error") {
+        terminalEventSeen = true;
       }
     }
   }
