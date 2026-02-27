@@ -37,17 +37,27 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const thread = await runtimeDeps.persistence.createThread(parsed.data);
-  const bundle = await runtimeDeps.persistence.getThreadBundle(thread.threadId);
+  try {
+    const thread = await runtimeDeps.persistence.createThread(parsed.data);
+    const bundle = await runtimeDeps.persistence.getThreadBundle(thread.threadId);
 
-  return Response.json(
-    {
-      thread,
-      versions: bundle?.versions ?? [],
-      messages: bundle?.messages ?? []
-    },
-    {
-      status: 201
-    }
-  );
+    return Response.json(
+      {
+        thread,
+        versions: bundle?.versions ?? [],
+        messages: bundle?.messages ?? []
+      },
+      {
+        status: 201
+      }
+    );
+  } catch (error) {
+    return Response.json(
+      {
+        error: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Thread creation failed."
+      },
+      { status: 500 }
+    );
+  }
 }

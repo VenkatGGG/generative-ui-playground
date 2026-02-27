@@ -41,12 +41,23 @@ export async function POST(
     return Response.json({ version }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not revert thread";
+    const isNotFound = /not found/i.test(message);
+    if (isNotFound) {
+      return Response.json(
+        {
+          error: "REVERT_FAILED",
+          message
+        },
+        { status: 404 }
+      );
+    }
+
     return Response.json(
       {
-        error: "REVERT_FAILED",
+        error: "INTERNAL_SERVER_ERROR",
         message
       },
-      { status: 404 }
+      { status: 500 }
     );
   }
 }

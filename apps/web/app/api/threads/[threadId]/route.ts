@@ -22,17 +22,27 @@ export async function GET(
     );
   }
 
-  const bundle = await runtimeDeps.persistence.getThreadBundle(threadId);
+  try {
+    const bundle = await runtimeDeps.persistence.getThreadBundle(threadId);
 
-  if (!bundle) {
+    if (!bundle) {
+      return Response.json(
+        {
+          error: "THREAD_NOT_FOUND",
+          message: `Thread '${threadId}' was not found.`
+        },
+        { status: 404 }
+      );
+    }
+
+    return Response.json(bundle);
+  } catch (error) {
     return Response.json(
       {
-        error: "THREAD_NOT_FOUND",
-        message: `Thread '${threadId}' was not found.`
+        error: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Thread retrieval failed."
       },
-      { status: 404 }
+      { status: 500 }
     );
   }
-
-  return Response.json(bundle);
 }
