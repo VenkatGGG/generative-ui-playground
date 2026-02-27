@@ -77,4 +77,39 @@ describe("streamGenerate", () => {
     expect(caught).toBeInstanceOf(StreamGenerateError);
     expect((caught as StreamGenerateError).code).toBe("STREAM_INTERRUPTED");
   });
+
+  it("rethrows client handler errors and stops consuming the stream", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        [
+          'data: {"type":"status","generationId":"g1","stage":"pass1"}',
+          "",
+          'data: {"type":"done","generationId":"g1","versionId":"v1","specHash":"h1"}',
+          ""
+        ].join("\n"),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    let handled = 0;
+    await expect(
+      streamGenerate({
+        endpoint: "/api/generate",
+        body: { threadId: "t1", prompt: "build", baseVersionId: null },
+        onEvent: (event) => {
+          handled += 1;
+          if (event.type === "status") {
+            throw new Error("PATCH_APPLY_FAILED:bad patch");
+          }
+        }
+      })
+    ).rejects.toThrow("PATCH_APPLY_FAILED:bad patch");
+
+    expect(handled).toBe(1);
+  });
 });
