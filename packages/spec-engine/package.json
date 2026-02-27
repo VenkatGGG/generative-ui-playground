@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@repo/contracts": "workspace:*"
+    "@repo/contracts": "workspace:*",
+    "fast-json-patch": "^3.1.1"
   }
 }
