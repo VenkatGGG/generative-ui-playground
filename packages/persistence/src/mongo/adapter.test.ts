@@ -174,6 +174,7 @@ describe("MongoPersistenceAdapter", () => {
       generationId: "gen-1",
       prompt: "Build a pricing card",
       assistantResponseText: "{\"id\":\"root\",\"type\":\"Card\"}",
+      assistantReasoningText: "Generated a pricing card with CTA emphasis.",
       baseVersionId: thread.activeVersionId,
       specSnapshot: {
         root: "root",
@@ -195,6 +196,7 @@ describe("MongoPersistenceAdapter", () => {
     expect(persisted.version.versionId).toBe("id-5");
     expect(persisted.message.role).toBe("assistant");
     expect(persisted.message.content).toContain("\"type\":\"Card\"");
+    expect(persisted.message.reasoning).toContain("pricing card");
     expect(persisted.message.meta?.patchCount).toBe(3);
     expect(persisted.message.meta?.durationMs).toBe(25);
     expect(persisted.message.meta?.specHash).toBe("hash-1");

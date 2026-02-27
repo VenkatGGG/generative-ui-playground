@@ -37,6 +37,44 @@ function parseCandidateObject(input: string): UIComponentNode | null {
 
 const fatalValidationCodes = new Set(["MAX_DEPTH_EXCEEDED", "MAX_NODES_EXCEEDED"]);
 
+function summarizePrompt(prompt: string): string {
+  const trimmed = prompt.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 120) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, 117)}...`;
+}
+
+function buildAssistantReasoningText(input: {
+  prompt: string;
+  intentType: "new" | "modify";
+  confidence: number;
+  componentNames: string[];
+  mcpContextVersion: string;
+  mcpRuleCount: number;
+  patchCount: number;
+  warningCount: number;
+  finalElementCount: number;
+}): string {
+  const action = input.intentType === "modify" ? "Refined an existing UI" : "Generated a new UI";
+  const components =
+    input.componentNames.length > 0 ? input.componentNames.join(", ") : "none explicitly requested";
+  const warnings =
+    input.warningCount === 0
+      ? "Validation completed with no warnings."
+      : `Validation raised ${input.warningCount} warning(s).`;
+
+  return [
+    `${action} from prompt "${summarizePrompt(input.prompt)}".`,
+    `Intent confidence: ${input.confidence.toFixed(2)}.`,
+    `Target components: ${components}.`,
+    `MCP context ${input.mcpContextVersion} supplied ${input.mcpRuleCount} rule(s).`,
+    `Applied ${input.patchCount} patch(es); final spec has ${input.finalElementCount} element(s).`,
+    warnings
+  ].join(" ");
+}
+
 export async function* runGeneration(
   request: GenerateRequest,
   deps: OrchestratorDeps
@@ -248,11 +286,23 @@ export async function* runGeneration(
 
     const hash = specHash(canonicalSpec);
     const assistantResponseText = modelOutputText.trim() || JSON.stringify(canonicalSpec);
+    const assistantReasoningText = buildAssistantReasoningText({
+      prompt: request.prompt,
+      intentType: pass1.intentType,
+      confidence: pass1.confidence,
+      componentNames: pass1.components,
+      mcpContextVersion: mcpContext.contextVersion,
+      mcpRuleCount: mcpContext.componentRules.length,
+      patchCount,
+      warningCount: warnings.length,
+      finalElementCount: Object.keys(canonicalSpec.elements).length
+    });
     const persisted = await deps.persistence.persistGeneration({
       threadId: request.threadId,
       generationId,
       prompt: request.prompt,
       assistantResponseText,
+      assistantReasoningText,
       baseVersionId: request.baseVersionId,
       specSnapshot: canonicalSpec,
       specHash: hash,

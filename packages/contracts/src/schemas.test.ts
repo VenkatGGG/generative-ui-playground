@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GenerateRequestSchema,
+  MessageRecordSchema,
   StreamEventSchema,
   UIComponentNodeSchema,
   UISpecSchema
@@ -46,5 +47,19 @@ describe("contracts schemas", () => {
     });
 
     expect(spec.root).toBe("root");
+  });
+
+  it("validates assistant reasoning field on messages", () => {
+    const message = MessageRecordSchema.parse({
+      id: "m1",
+      threadId: "t1",
+      generationId: "g1",
+      role: "assistant",
+      content: "{\"id\":\"root\",\"type\":\"Card\"}",
+      reasoning: "Generated a simple pricing card.",
+      createdAt: "2026-02-27T00:00:00.000Z"
+    });
+
+    expect(message.reasoning).toContain("pricing card");
   });
 });

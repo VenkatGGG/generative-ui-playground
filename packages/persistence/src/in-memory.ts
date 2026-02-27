@@ -125,6 +125,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       generationId: input.generationId,
       role: "assistant",
       content: input.assistantResponseText,
+      reasoning: input.assistantReasoningText,
       createdAt: timestamp,
       meta: {
         warningCount: input.warnings.length,

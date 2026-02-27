@@ -16,6 +16,7 @@ export interface PersistGenerationInput {
   generationId: string;
   prompt: string;
   assistantResponseText: string;
+  assistantReasoningText: string;
   baseVersionId: string | null;
   specSnapshot: UISpec;
   specHash: string;

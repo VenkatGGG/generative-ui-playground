@@ -17,6 +17,7 @@ interface ThreadBundleLike {
   messages: Array<{
     role: "user" | "assistant";
     content: string;
+    reasoning?: string;
     meta?: Record<string, unknown>;
   }>;
   versions: Array<{
@@ -135,6 +136,8 @@ describe("iterative generation e2e", () => {
     expect(assistantMessages.length).toBe(2);
 
     for (const message of assistantMessages) {
+      expect(typeof message.reasoning).toBe("string");
+      expect((message.reasoning as string).length).toBeGreaterThan(0);
       expect(typeof message.meta?.warningCount).toBe("number");
       expect(typeof message.meta?.patchCount).toBe("number");
       expect(typeof message.meta?.durationMs).toBe("number");

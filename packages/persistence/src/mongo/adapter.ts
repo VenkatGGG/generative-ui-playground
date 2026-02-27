@@ -72,6 +72,7 @@ function toMessageRecord(doc: MongoDocuments["message"]): MessageRecord {
     generationId: doc.generationId,
     role: doc.role,
     content: doc.content,
+    reasoning: doc.reasoning,
     createdAt: doc.createdAt,
     meta: doc.meta
   };
@@ -222,6 +223,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       generationId: input.generationId,
       role: "assistant",
       content: input.assistantResponseText,
+      reasoning: input.assistantReasoningText,
       createdAt: timestamp,
       meta: {
         warningCount: input.warnings.length,

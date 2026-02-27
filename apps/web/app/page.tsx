@@ -72,19 +72,20 @@ function RegistryButton({ children, className, variant, size }: RegisteredCompon
 }
 
 const registry = createStrictRegistry({
-  Card: RegistryCard as any,
-  CardHeader: RegistryCardHeader as any,
-  CardTitle: RegistryCardTitle as any,
-  CardDescription: RegistryCardDescription as any,
-  CardContent: RegistryCardContent as any,
-  Button: RegistryButton as any,
-  Text: RegistryText as any
+  Card: RegistryCard,
+  CardHeader: RegistryCardHeader,
+  CardTitle: RegistryCardTitle,
+  CardDescription: RegistryCardDescription,
+  CardContent: RegistryCardContent,
+  Button: RegistryButton,
+  Text: RegistryText
 });
 
 type UiMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string;
 };
 
 type RevertState = {
@@ -143,7 +144,8 @@ export default function HomePage() {
       nextBundle.messages.map((message) => ({
         id: message.id,
         role: message.role,
-        content: message.content
+        content: message.content,
+        reasoning: message.reasoning
       }))
     );
 
@@ -324,9 +326,16 @@ export default function HomePage() {
                   <p className="text-sm text-muted-foreground">No messages yet.</p>
                 ) : (
                   messages.map((message) => (
-                    <p key={message.id} className="text-sm">
-                      <span className="font-semibold">{message.role}:</span> {message.content}
-                    </p>
+                    <div key={message.id} className="space-y-1 text-sm">
+                      <p>
+                        <span className="font-semibold">{message.role}:</span> {message.content}
+                      </p>
+                      {message.role === "assistant" && message.reasoning ? (
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium">reasoning:</span> {message.reasoning}
+                        </p>
+                      ) : null}
+                    </div>
                   ))
                 )}
               </CardContent>

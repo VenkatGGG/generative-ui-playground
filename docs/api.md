@@ -41,6 +41,11 @@ Create a thread.
 ## GET `/api/threads/:threadId`
 Returns full thread bundle.
 
+Assistant messages include:
+
+- `content`: raw streamed model output captured during generation.
+- `reasoning` (optional): human-readable generation summary persisted by orchestrator.
+
 ### Error `500`
 ```json
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }

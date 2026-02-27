@@ -94,6 +94,7 @@ export const MessageRecordSchema = z.object({
   generationId: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
+  reasoning: z.string().optional(),
   createdAt: z.string(),
   meta: z.record(z.unknown()).optional()
 });

@@ -69,6 +69,7 @@ function createDeps(): {
           generationId: input.generationId,
           role: "assistant",
           content: input.assistantResponseText,
+          reasoning: input.assistantReasoningText,
           createdAt: now
         },
         log: {

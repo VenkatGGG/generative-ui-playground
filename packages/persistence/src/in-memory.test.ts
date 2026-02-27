@@ -11,6 +11,7 @@ describe("InMemoryPersistenceAdapter", () => {
       generationId: "g1",
       prompt: "Build card",
       assistantResponseText: "{\"id\":\"root\",\"type\":\"Card\"}",
+      assistantReasoningText: "Generated a card layout using Card.",
       baseVersionId: null,
       specSnapshot: {
         root: "root",
@@ -38,6 +39,7 @@ describe("InMemoryPersistenceAdapter", () => {
 
     expect(persisted.version.threadId).toBe(thread.threadId);
     expect(persisted.message.content).toContain("\"type\":\"Card\"");
+    expect(persisted.message.reasoning).toContain("Generated a card layout");
     expect(persisted.log.patchCount).toBe(2);
     expect(persisted.log.durationMs).toBe(12);
     expect(persisted.message.meta?.patchCount).toBe(2);

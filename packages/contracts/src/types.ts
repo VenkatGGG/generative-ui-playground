@@ -68,6 +68,7 @@ export interface MessageRecord {
   generationId: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string;
   createdAt: string;
   meta?: Record<string, unknown>;
 }
