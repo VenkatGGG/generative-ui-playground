@@ -14,6 +14,9 @@
   "dependencies": {
     "@repo/client-core": "workspace:*",
     "@repo/contracts": "workspace:*",
+    "@repo/integrations": "workspace:*",
+    "@repo/orchestrator": "workspace:*",
+    "@repo/persistence": "workspace:*",
     "@repo/renderer-react": "workspace:*",
     "next": "^15.3.3",
     "react": "^19.1.0",
