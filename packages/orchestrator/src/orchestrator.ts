@@ -3,6 +3,7 @@ import type { GenerateRequest, StreamEvent, UIComponentNode, UISpec } from "@rep
 import { normalizeTreeToSpec, validateSpec, diffSpecs } from "@repo/spec-engine";
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
+import { extractCompleteJsonObjects } from "./json-stream";
 
 export interface OrchestratorDeps {
   model: GenerationModelAdapter;
@@ -14,14 +15,14 @@ function specHash(spec: UISpec): string {
   return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
 }
 
-function parseCandidateLine(line: string): UIComponentNode | null {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return null;
-  }
-
+function parseCandidateObject(input: string): UIComponentNode | null {
   try {
-    return JSON.parse(trimmed) as UIComponentNode;
+    const parsed = JSON.parse(input);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed as UIComponentNode;
   } catch {
     return null;
   }
@@ -127,95 +128,83 @@ export async function* runGeneration(
 
   let buffer = "";
 
+  function* processCandidateNode(
+    candidateNode: UIComponentNode
+  ): Generator<StreamEvent, "continue" | "fatal", void> {
+    const candidateSpec = normalizeTreeToSpec(candidateNode);
+    const result = validateAndDiffCandidate(candidateSpec);
+
+    if (result.type === "invalid") {
+      for (const issue of result.warnings) {
+        const warning = {
+          type: "warning" as const,
+          generationId,
+          code: issue.code,
+          message: issue.message
+        };
+        warnings.push({ code: warning.code, message: warning.message });
+        yield warning;
+      }
+
+      if (result.fatalError) {
+        yield {
+          type: "error",
+          generationId,
+          code: result.fatalError.code,
+          message: result.fatalError.message
+        };
+        return "fatal";
+      }
+
+      return "continue";
+    }
+
+    for (const patch of result.patches) {
+      patchCount += 1;
+      yield {
+        type: "patch",
+        generationId,
+        patch
+      };
+    }
+
+    canonicalSpec = result.nextSpec;
+    return "continue";
+  }
+
   for await (const chunk of deps.model.streamDesign({
     prompt: request.prompt,
     previousSpec: baseVersion?.specSnapshot ?? null,
     componentContext: mcpContext
   })) {
     buffer += chunk;
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    const extracted = extractCompleteJsonObjects(buffer);
+    buffer = extracted.remainder;
 
-    for (const line of lines) {
-      const candidateNode = parseCandidateLine(line);
+    for (const jsonObject of extracted.objects) {
+      const candidateNode = parseCandidateObject(jsonObject);
       if (!candidateNode) {
         continue;
       }
 
-      const candidateSpec = normalizeTreeToSpec(candidateNode);
-      const result = validateAndDiffCandidate(candidateSpec);
-
-      if (result.type === "invalid") {
-        for (const issue of result.warnings) {
-          const warning = {
-            type: "warning" as const,
-            generationId,
-            code: issue.code,
-            message: issue.message
-          };
-          warnings.push({ code: warning.code, message: warning.message });
-          yield warning;
-        }
-
-        if (result.fatalError) {
-          yield {
-            type: "error",
-            generationId,
-            code: result.fatalError.code,
-            message: result.fatalError.message
-          };
-          return;
-        }
-
-        continue;
+      const outcome = yield* processCandidateNode(candidateNode);
+      if (outcome === "fatal") {
+        return;
       }
-
-      const patches = result.patches;
-      for (const patch of patches) {
-        patchCount += 1;
-        yield {
-          type: "patch",
-          generationId,
-          patch
-        };
-      }
-
-      canonicalSpec = result.nextSpec;
     }
   }
 
   if (buffer.trim()) {
-    const candidateNode = parseCandidateLine(buffer);
-    if (candidateNode) {
-      const candidateSpec = normalizeTreeToSpec(candidateNode);
-      const result = validateAndDiffCandidate(candidateSpec);
-      if (result.type === "valid") {
-        for (const patch of result.patches) {
-          patchCount += 1;
-          yield { type: "patch", generationId, patch };
-        }
-        canonicalSpec = result.nextSpec;
-      } else {
-        for (const issue of result.warnings) {
-          const warning = {
-            type: "warning" as const,
-            generationId,
-            code: issue.code,
-            message: issue.message
-          };
-          warnings.push({ code: warning.code, message: warning.message });
-          yield warning;
-        }
+    const extracted = extractCompleteJsonObjects(buffer);
+    for (const jsonObject of extracted.objects) {
+      const candidateNode = parseCandidateObject(jsonObject);
+      if (!candidateNode) {
+        continue;
+      }
 
-        if (result.fatalError) {
-          yield {
-            type: "error",
-            generationId,
-            code: result.fatalError.code,
-            message: result.fatalError.message
-          };
-          return;
-        }
+      const outcome = yield* processCandidateNode(candidateNode);
+      if (outcome === "fatal") {
+        return;
       }
     }
   }

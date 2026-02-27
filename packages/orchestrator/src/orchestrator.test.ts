@@ -200,4 +200,37 @@ describe("runGeneration", () => {
     expect(events.some((event) => event.type === "done")).toBe(false);
     expect(persisted).toBe(false);
   });
+
+  it("handles partial chunked json objects without newline delimiters", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign() {
+        yield '{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"hel';
+        yield 'lo\"]}]}{\"id\":\"root\",\"type\":\"Card\",\"children\":[{\"id\":\"txt\",\"type\":\"Text\",\"children\":[\"hello v2\"]}]}';
+      }
+    };
+
+    const events: string[] = [];
+    let patchCount = 0;
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "build from chunked stream",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      events.push(event.type);
+      if (event.type === "patch") {
+        patchCount += 1;
+      }
+    }
+
+    expect(events.includes("done")).toBe(true);
+    expect(events.includes("error")).toBe(false);
+    expect(patchCount).toBeGreaterThan(0);
+  });
 });
