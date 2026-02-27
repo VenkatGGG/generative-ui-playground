@@ -44,6 +44,19 @@ export async function* runGeneration(
   const generationId = randomUUID();
   const warnings: Array<{ code: string; message: string }> = [];
   let patchCount = 0;
+  const recordFailure = async (errorCode: string): Promise<void> => {
+    try {
+      await deps.persistence.recordGenerationFailure({
+        threadId: request.threadId,
+        generationId,
+        warningCount: warnings.length,
+        patchCount,
+        errorCode
+      });
+    } catch {
+      // Failure logging must never break the generation stream.
+    }
+  };
 
   try {
     const threadBundle = await deps.persistence.getThreadBundle(request.threadId);
@@ -59,6 +72,7 @@ export async function* runGeneration(
 
     const baseVersion = await deps.persistence.getVersion(request.threadId, request.baseVersionId);
     if (request.baseVersionId && !baseVersion) {
+      await recordFailure("BASE_VERSION_CONFLICT");
       yield {
         type: "error",
         generationId,
@@ -155,6 +169,7 @@ export async function* runGeneration(
         }
 
         if (result.fatalError) {
+          void recordFailure(result.fatalError.code);
           yield {
             type: "error",
             generationId,
@@ -237,6 +252,7 @@ export async function* runGeneration(
       specHash: hash
     };
   } catch (error) {
+    await recordFailure("GENERATION_EXCEPTION");
     yield {
       type: "error",
       generationId,

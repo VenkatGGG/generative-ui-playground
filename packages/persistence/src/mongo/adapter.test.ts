@@ -194,13 +194,25 @@ describe("MongoPersistenceAdapter", () => {
     expect(persisted.message.role).toBe("assistant");
     expect(persisted.log.patchCount).toBe(3);
 
+    const failureLog = await adapter.recordGenerationFailure({
+      threadId: thread.threadId,
+      generationId: "gen-2",
+      warningCount: 1,
+      patchCount: 0,
+      errorCode: "GENERATION_EXCEPTION"
+    });
+    expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
+
     const reverted = await adapter.revertThread(thread.threadId, persisted.version.versionId);
-    expect(reverted.versionId).toBe("id-7");
+    expect(reverted.versionId).toBe("id-8");
 
     const bundle = await adapter.getThreadBundle(thread.threadId);
+    const logs = await generationLogs.find({ threadId: thread.threadId }).toArray();
     expect(bundle).not.toBeNull();
-    expect(bundle?.thread.activeVersionId).toBe("id-7");
+    expect(bundle?.thread.activeVersionId).toBe("id-8");
     expect(bundle?.versions.length).toBe(3);
     expect(bundle?.messages.length).toBe(2);
+    expect(logs.length).toBe(2);
+    expect(logs.some((log) => log.errorCode === "GENERATION_EXCEPTION")).toBe(true);
   });
 });

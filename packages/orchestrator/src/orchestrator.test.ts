@@ -81,6 +81,17 @@ function createDeps(): {
         }
       };
     },
+    async recordGenerationFailure(input) {
+      return {
+        id: "log-failure",
+        generationId: input.generationId,
+        threadId: input.threadId,
+        warningCount: input.warningCount,
+        patchCount: input.patchCount,
+        errorCode: input.errorCode,
+        createdAt: now
+      };
+    },
     async revertThread() {
       throw new Error("not used");
     }
@@ -162,6 +173,7 @@ describe("runGeneration", () => {
   it("stops generation when validation limits are exceeded", async () => {
     const deps = createDeps();
     let persisted = false;
+    let failureLogCode: string | null = null;
 
     deps.model = {
       ...deps.model,
@@ -175,6 +187,18 @@ describe("runGeneration", () => {
       async persistGeneration() {
         persisted = true;
         throw new Error("should not persist");
+      },
+      async recordGenerationFailure(input) {
+        failureLogCode = input.errorCode;
+        return {
+          id: "failed-log",
+          generationId: input.generationId,
+          threadId: input.threadId,
+          warningCount: input.warningCount,
+          patchCount: input.patchCount,
+          errorCode: input.errorCode,
+          createdAt: "2026-02-27T00:00:00.000Z"
+        };
       }
     };
 
@@ -199,6 +223,7 @@ describe("runGeneration", () => {
     );
     expect(events.some((event) => event.type === "done")).toBe(false);
     expect(persisted).toBe(false);
+    expect(failureLogCode).toBe("MAX_DEPTH_EXCEEDED");
   });
 
   it("handles partial chunked json objects without newline delimiters", async () => {
@@ -263,10 +288,26 @@ describe("runGeneration", () => {
 
   it("emits generation exception with concrete generationId when dependencies throw", async () => {
     const deps = createDeps();
+    let failureLogCode: string | null = null;
     deps.model = {
       ...deps.model,
       async extractComponents() {
         throw new Error("upstream-model-failure");
+      }
+    };
+    deps.persistence = {
+      ...deps.persistence,
+      async recordGenerationFailure(input) {
+        failureLogCode = input.errorCode;
+        return {
+          id: "failed-log",
+          generationId: input.generationId,
+          threadId: input.threadId,
+          warningCount: input.warningCount,
+          patchCount: input.patchCount,
+          errorCode: input.errorCode,
+          createdAt: "2026-02-27T00:00:00.000Z"
+        };
       }
     };
 
@@ -293,5 +334,6 @@ describe("runGeneration", () => {
     expect(errorEvent?.code).toBe("GENERATION_EXCEPTION");
     expect(errorEvent?.generationId).toBeDefined();
     expect(errorEvent?.generationId?.length).toBeGreaterThan(0);
+    expect(failureLogCode).toBe("GENERATION_EXCEPTION");
   });
 });

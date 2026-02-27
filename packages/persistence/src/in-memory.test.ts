@@ -23,10 +23,19 @@ describe("InMemoryPersistenceAdapter", () => {
       patchCount: 2
     });
 
+    const failureLog = await adapter.recordGenerationFailure({
+      threadId: thread.threadId,
+      generationId: "g2",
+      warningCount: 1,
+      patchCount: 0,
+      errorCode: "GENERATION_EXCEPTION"
+    });
+
     const bundle = await adapter.getThreadBundle(thread.threadId);
 
     expect(persisted.version.threadId).toBe(thread.threadId);
     expect(persisted.log.patchCount).toBe(2);
+    expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
     expect(bundle?.versions.length).toBeGreaterThan(0);
     expect(bundle?.messages.length).toBeGreaterThan(0);
   });

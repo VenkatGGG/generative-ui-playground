@@ -23,10 +23,19 @@ export interface PersistGenerationInput {
   patchCount: number;
 }
 
+export interface RecordGenerationFailureInput {
+  threadId: string;
+  generationId: string;
+  warningCount: number;
+  patchCount: number;
+  errorCode: string;
+}
+
 export interface PersistenceAdapter {
   createThread(input: CreateThreadInput): Promise<ThreadRecord>;
   getThreadBundle(threadId: string): Promise<ThreadBundle | null>;
   getVersion(threadId: string, versionId: string | null): Promise<VersionRecord | null>;
   persistGeneration(input: PersistGenerationInput): Promise<{ version: VersionRecord; message: MessageRecord; log: GenerationLogRecord }>;
+  recordGenerationFailure(input: RecordGenerationFailureInput): Promise<GenerationLogRecord>;
   revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord>;
 }

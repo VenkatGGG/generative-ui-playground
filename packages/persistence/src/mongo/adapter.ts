@@ -7,7 +7,12 @@ import type {
   ThreadRecord,
   VersionRecord
 } from "@repo/contracts";
-import type { CreateThreadInput, PersistGenerationInput, PersistenceAdapter } from "../interfaces";
+import type {
+  CreateThreadInput,
+  PersistGenerationInput,
+  PersistenceAdapter,
+  RecordGenerationFailureInput
+} from "../interfaces";
 
 interface CollectionNames {
   threads: string;
@@ -265,6 +270,28 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       message: assistantMessage,
       log
     };
+  }
+
+  public async recordGenerationFailure(
+    input: RecordGenerationFailureInput
+  ): Promise<GenerationLogRecord> {
+    const thread = await this.threads.findOne({ threadId: input.threadId });
+    if (!thread) {
+      throw new Error(`Thread '${input.threadId}' not found.`);
+    }
+
+    const log: GenerationLogRecord = {
+      id: this.idFactory(),
+      generationId: input.generationId,
+      threadId: input.threadId,
+      warningCount: input.warningCount,
+      patchCount: input.patchCount,
+      errorCode: input.errorCode,
+      createdAt: this.now()
+    };
+
+    await this.generationLogs.insertOne(log);
+    return log;
   }
 
   public async revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord> {
