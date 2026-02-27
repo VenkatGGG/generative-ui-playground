@@ -69,6 +69,9 @@ describe("createGeminiGenerationModel", () => {
       };
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
+      expect(body.generationConfig?.responseSchema).not.toHaveProperty("$schema");
+      expect(body.generationConfig?.responseSchema).not.toHaveProperty("$ref");
+      expect(body.generationConfig?.responseSchema).not.toHaveProperty("$defs");
 
       return new Response(ssePayload, {
         status: 200,

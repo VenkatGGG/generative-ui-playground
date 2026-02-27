@@ -5,7 +5,6 @@ import type {
 } from "../interfaces";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { parseSseData } from "../shared/sse";
-import { UI_COMPONENT_NODE_JSON_SCHEMA } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
@@ -31,6 +30,32 @@ interface GeminiGenerateRequest {
     responseSchema?: Record<string, unknown>;
   };
 }
+
+const GEMINI_UI_COMPONENT_NODE_SCHEMA: Record<string, unknown> = {
+  type: "OBJECT",
+  required: ["id", "type"],
+  properties: {
+    id: { type: "STRING" },
+    type: { type: "STRING" },
+    props: { type: "OBJECT" },
+    children: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        required: ["id", "type"],
+        properties: {
+          id: { type: "STRING" },
+          type: { type: "STRING" },
+          props: { type: "OBJECT" },
+          children: {
+            type: "ARRAY",
+            items: { type: "OBJECT" }
+          }
+        }
+      }
+    }
+  }
+};
 
 function buildGenerateEndpoint(baseUrl: string, model: string, apiKey: string): string {
   return `${baseUrl.replace(/\/$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -213,7 +238,7 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2Prompt(input), UI_COMPONENT_NODE_JSON_SCHEMA)
+        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA)
       );
     }
   };
