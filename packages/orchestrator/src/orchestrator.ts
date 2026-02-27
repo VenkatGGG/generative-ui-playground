@@ -43,6 +43,20 @@ function parseCandidateObject(input: string): UIComponentNode | null {
 
 const fatalValidationCodes = new Set(["MAX_DEPTH_EXCEEDED", "MAX_NODES_EXCEEDED"]);
 const MAX_PASS2_ATTEMPTS = 3;
+const QUOTED_TOKEN_RE = /["“”'‘’]([^"“”'‘’]{2,80})["“”'‘’]/g;
+const PRICE_TOKEN_RE = /\$\s?\d+(?:\.\d+)?(?:\s*\/\s*[a-zA-Z]+)?/;
+const PRIMARY_CTA_HINT_RE =
+  /\b(start|trial|subscribe|buy|get|continue|sign|join|upgrade|book)\b/i;
+const SECONDARY_CTA_HINT_RE = /\b(view|docs|learn|more|details|read)\b/i;
+const FEATURE_COUNT_RE = /(\d+)\s+bullet/i;
+const DEFAULT_FEATURES = [
+  "Unlimited projects",
+  "Priority support",
+  "Team collaboration",
+  "Advanced analytics",
+  "Custom workflows",
+  "Export-ready reporting"
+];
 
 function summarizePrompt(prompt: string): string {
   const trimmed = prompt.trim().replace(/\s+/g, " ");
@@ -96,6 +110,245 @@ function buildRetryPrompt(basePrompt: string, violations: ConstraintViolation[],
     ...lines,
     "Return complete UIComponentNode JSON snapshots only."
   ].join("\n");
+}
+
+function normalizeTextToken(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map(normalizeTextToken).filter((value) => value.length > 0)));
+}
+
+function extractQuotedTokens(prompt: string): string[] {
+  const tokens: string[] = [];
+  for (const match of prompt.matchAll(QUOTED_TOKEN_RE)) {
+    const token = match[1];
+    if (!token) {
+      continue;
+    }
+    tokens.push(token);
+  }
+
+  return uniqueStrings(tokens);
+}
+
+function extractTextSegmentsFromNode(node: UIComponentNode): string[] {
+  const texts: string[] = [];
+
+  const visit = (current: UIComponentNode): void => {
+    if (typeof current.props?.text === "string") {
+      texts.push(current.props.text);
+    }
+
+    if (!current.children) {
+      return;
+    }
+
+    for (const child of current.children) {
+      if (typeof child === "string") {
+        texts.push(child);
+        continue;
+      }
+
+      visit(child);
+    }
+  };
+
+  visit(node);
+  return uniqueStrings(texts);
+}
+
+function derivePromptHints(prompt: string, requiredTextTokens: string[]): {
+  title: string;
+  description: string;
+  price: string | null;
+  primaryCta: string;
+  secondaryCta: string;
+  featureCount: number;
+} {
+  const quotedTokens = extractQuotedTokens(prompt);
+  const combinedTokens = uniqueStrings([...quotedTokens, ...requiredTextTokens]);
+  const lowerPrompt = prompt.toLowerCase();
+
+  const priceToken =
+    combinedTokens.find((token) => PRICE_TOKEN_RE.test(token)) ?? prompt.match(PRICE_TOKEN_RE)?.[0] ?? null;
+
+  const primaryCta =
+    combinedTokens.find((token) => PRIMARY_CTA_HINT_RE.test(token)) ??
+    (lowerPrompt.includes("trial") ? "Start Free Trial" : "Get Started");
+
+  const secondaryCta =
+    combinedTokens.find((token) => token !== primaryCta && SECONDARY_CTA_HINT_RE.test(token)) ??
+    (lowerPrompt.includes("docs") || lowerPrompt.includes("secondary") ? "View Docs" : "Learn More");
+
+  const title =
+    combinedTokens.find((token) => {
+      if (token === priceToken || token === primaryCta || token === secondaryCta) {
+        return false;
+      }
+      return token.length > 2;
+    }) ?? (lowerPrompt.includes("pricing") ? "Pricing Plan" : "Generated UI");
+
+  const descriptionToken = combinedTokens.find(
+    (token) =>
+      token !== title &&
+      token !== priceToken &&
+      token !== primaryCta &&
+      token !== secondaryCta &&
+      token.split(" ").length >= 3
+  );
+  const description =
+    descriptionToken ??
+    (lowerPrompt.includes("startup")
+      ? "Perfect for startups and small teams."
+      : "Clean, modern layout with clear hierarchy.");
+
+  const featureCountMatch = prompt.match(FEATURE_COUNT_RE);
+  const rawFeatureCount = featureCountMatch ? Number.parseInt(featureCountMatch[1] ?? "0", 10) : 0;
+  const featureCount = Number.isFinite(rawFeatureCount) && rawFeatureCount > 0
+    ? Math.min(rawFeatureCount, 6)
+    : lowerPrompt.includes("feature")
+      ? 3
+      : 2;
+
+  return {
+    title,
+    description,
+    price: priceToken,
+    primaryCta,
+    secondaryCta,
+    featureCount
+  };
+}
+
+function buildDeterministicCardNode(input: {
+  prompt: string;
+  requiredTextTokens: string[];
+  requiredComponentTypes: Set<string>;
+  sourceTexts?: string[];
+}): UIComponentNode {
+  const hints = derivePromptHints(input.prompt, input.requiredTextTokens);
+  const sourceTexts = uniqueStrings(input.sourceTexts ?? []);
+
+  const usedTexts = new Set<string>();
+  const track = (value: string): string => {
+    usedTexts.add(normalizeTextToken(value).toLowerCase());
+    return value;
+  };
+
+  const cardClassParts = ["w-full", "max-w-xl", "rounded-xl", "border", "p-1"];
+  if (/\bshadow\b/i.test(input.prompt)) {
+    cardClassParts.push("shadow-sm");
+  }
+  cardClassParts.push("bg-card");
+
+  let idCounter = 0;
+  const nextId = (prefix: string): string => {
+    idCounter += 1;
+    return `${prefix}-${idCounter}`;
+  };
+
+  const contentChildren: UIComponentNode[] = [];
+
+  if (hints.price) {
+    contentChildren.push({
+      id: nextId("price"),
+      type: "Text",
+      props: { className: "text-3xl font-bold tracking-tight" },
+      children: [track(hints.price)]
+    });
+  }
+
+  const candidateFeatures = sourceTexts.filter((text) => {
+    const normalized = text.toLowerCase();
+    return (
+      normalized !== hints.title.toLowerCase() &&
+      normalized !== hints.description.toLowerCase() &&
+      normalized !== hints.primaryCta.toLowerCase() &&
+      normalized !== hints.secondaryCta.toLowerCase() &&
+      (!hints.price || normalized !== hints.price.toLowerCase())
+    );
+  });
+
+  const featureValues = [...candidateFeatures, ...DEFAULT_FEATURES]
+    .map((value) => (value.startsWith("•") ? value : `• ${value}`))
+    .slice(0, hints.featureCount);
+
+  featureValues.forEach((feature) => {
+    contentChildren.push({
+      id: nextId("feature"),
+      type: "Text",
+      props: { className: "text-sm text-muted-foreground" },
+      children: [track(feature)]
+    });
+  });
+
+  if (input.requiredComponentTypes.has("Badge") || /\bbadge|popular|pro plan\b/i.test(input.prompt)) {
+    contentChildren.push({
+      id: nextId("badge"),
+      type: "Badge",
+      props: { variant: "secondary" },
+      children: [track("Popular")]
+    });
+  }
+
+  contentChildren.push({
+    id: nextId("primary-cta"),
+    type: "Button",
+    props: { className: "w-full", variant: "default" },
+    children: [track(hints.primaryCta)]
+  });
+
+  contentChildren.push({
+    id: nextId("secondary-cta"),
+    type: "Button",
+    props: { className: "w-full", variant: "outline" },
+    children: [track(hints.secondaryCta)]
+  });
+
+  for (const token of uniqueStrings(input.requiredTextTokens)) {
+    if (usedTexts.has(token.toLowerCase())) {
+      continue;
+    }
+
+    contentChildren.push({
+      id: nextId("token"),
+      type: "Text",
+      props: { className: "text-sm text-muted-foreground" },
+      children: [track(token)]
+    });
+  }
+
+  return {
+    id: "root",
+    type: "Card",
+    props: { className: cardClassParts.join(" ") },
+    children: [
+      {
+        id: "header",
+        type: "CardHeader",
+        children: [
+          {
+            id: "title",
+            type: "CardTitle",
+            children: [track(hints.title)]
+          },
+          {
+            id: "description",
+            type: "CardDescription",
+            children: [track(hints.description)]
+          }
+        ]
+      },
+      {
+        id: "content",
+        type: "CardContent",
+        props: { className: "space-y-3" },
+        children: contentChildren
+      }
+    ]
+  };
 }
 
 export async function* runGeneration(
@@ -236,6 +489,40 @@ export async function* runGeneration(
       const candidateSpec = normalizeTreeToSpec(candidateNode);
       const result = validateAndDiffCandidate(candidateSpec);
 
+      if (result.type === "invalid" && !result.fatalError) {
+        const repairedNode = buildDeterministicCardNode({
+          prompt: request.prompt,
+          requiredTextTokens: constraints.requiredTextTokens,
+          requiredComponentTypes: constraints.requiredComponentTypes,
+          sourceTexts: extractTextSegmentsFromNode(candidateNode)
+        });
+        const repairedSpec = normalizeTreeToSpec(repairedNode);
+        const repairedResult = validateAndDiffCandidate(repairedSpec);
+
+        if (repairedResult.type === "valid") {
+          const repairWarning = {
+            type: "warning" as const,
+            generationId,
+            code: "REPAIR_APPLIED",
+            message: "Applied server-side repair to transform sparse model output into a valid card structure."
+          };
+          warnings.push({ code: repairWarning.code, message: repairWarning.message });
+          yield repairWarning;
+
+          for (const patch of repairedResult.patches) {
+            patchCount += 1;
+            yield {
+              type: "patch",
+              generationId,
+              patch
+            };
+          }
+
+          canonicalSpec = repairedResult.nextSpec;
+          return "accepted";
+        }
+      }
+
       if (result.type === "invalid") {
         if (result.violations.length > 0) {
           lastConstraintViolations = result.violations;
@@ -280,6 +567,7 @@ export async function* runGeneration(
     let acceptedCandidate = false;
     let sawAnyCandidate = false;
     let lastConstraintViolations: ConstraintViolation[] = [];
+    let streamFailureMessage: string | null = null;
 
     for (let attempt = 1; attempt <= MAX_PASS2_ATTEMPTS; attempt += 1) {
       yield {
@@ -294,34 +582,48 @@ export async function* runGeneration(
           ? request.prompt
           : buildRetryPrompt(request.prompt, lastConstraintViolations, attempt);
 
-      for await (const chunk of deps.model.streamDesign({
-        prompt: streamPrompt,
-        previousSpec: baseVersion?.specSnapshot ?? null,
-        componentContext: mcpContext
-      })) {
-        appendModelOutput(chunk);
-        buffer += chunk;
-        const extracted = extractCompleteJsonObjects(buffer);
-        buffer = extracted.remainder;
+      try {
+        for await (const chunk of deps.model.streamDesign({
+          prompt: streamPrompt,
+          previousSpec: baseVersion?.specSnapshot ?? null,
+          componentContext: mcpContext
+        })) {
+          appendModelOutput(chunk);
+          buffer += chunk;
+          const extracted = extractCompleteJsonObjects(buffer);
+          buffer = extracted.remainder;
 
-        for (const jsonObject of extracted.objects) {
-          const candidateNode = parseCandidateObject(jsonObject);
-          if (!candidateNode) {
-            continue;
-          }
+          for (const jsonObject of extracted.objects) {
+            const candidateNode = parseCandidateObject(jsonObject);
+            if (!candidateNode) {
+              continue;
+            }
 
-          sawAnyCandidate = true;
-          const outcome = yield* processCandidateNode(candidateNode);
-          if (outcome === "accepted") {
-            acceptedCandidate = true;
-            continue;
-          }
+            sawAnyCandidate = true;
+            const outcome = yield* processCandidateNode(candidateNode);
+            if (outcome === "accepted") {
+              acceptedCandidate = true;
+              continue;
+            }
 
-          if (outcome !== "rejected") {
-            await recordFailure(outcome);
-            return;
+            if (outcome !== "rejected") {
+              await recordFailure(outcome);
+              return;
+            }
           }
         }
+      } catch (error) {
+        streamFailureMessage =
+          error instanceof Error ? error.message : "Pass 2 stream failed unexpectedly.";
+        const streamWarning = {
+          type: "warning" as const,
+          generationId,
+          code: "PASS2_STREAM_FAILED",
+          message: streamFailureMessage
+        };
+        warnings.push({ code: streamWarning.code, message: streamWarning.message });
+        yield streamWarning;
+        break;
       }
 
       if (buffer.trim()) {
@@ -346,6 +648,10 @@ export async function* runGeneration(
         }
       }
 
+      if (streamFailureMessage) {
+        break;
+      }
+
       const finalViolations = validateConstraintSet(canonicalSpec, constraints);
       if (finalViolations.length === 0 && (pass1.intentType !== "new" || patchCount > 0)) {
         acceptedCandidate = true;
@@ -367,19 +673,49 @@ export async function* runGeneration(
     }
 
     if (!acceptedCandidate || (pass1.intentType === "new" && patchCount === 0)) {
-      const reason =
-        !sawAnyCandidate || lastConstraintViolations.length === 0
-          ? "Model did not produce a valid non-empty constrained candidate."
-          : lastConstraintViolations.map((violation) => violation.message).join(" ");
+      const fallbackNode = buildDeterministicCardNode({
+        prompt: request.prompt,
+        requiredTextTokens: constraints.requiredTextTokens,
+        requiredComponentTypes: constraints.requiredComponentTypes
+      });
+      const fallbackSpec = normalizeTreeToSpec(fallbackNode);
+      const fallbackResult = validateAndDiffCandidate(fallbackSpec);
 
-      await recordFailure("MCP_CONSTRAINT_NOT_SATISFIED");
-      yield {
-        type: "error",
-        generationId,
-        code: "MCP_CONSTRAINT_NOT_SATISFIED",
-        message: reason
-      };
-      return;
+      if (fallbackResult.type === "valid") {
+        const fallbackWarning = {
+          type: "warning" as const,
+          generationId,
+          code: "FALLBACK_APPLIED",
+          message: "Applied deterministic fallback UI to guarantee a renderable result."
+        };
+        warnings.push({ code: fallbackWarning.code, message: fallbackWarning.message });
+        yield fallbackWarning;
+
+        for (const patch of fallbackResult.patches) {
+          patchCount += 1;
+          yield {
+            type: "patch",
+            generationId,
+            patch
+          };
+        }
+
+        canonicalSpec = fallbackResult.nextSpec;
+      } else {
+        const reason =
+          !sawAnyCandidate || lastConstraintViolations.length === 0
+            ? streamFailureMessage ?? "Model did not produce a valid non-empty constrained candidate."
+            : lastConstraintViolations.map((violation) => violation.message).join(" ");
+
+        await recordFailure("MCP_CONSTRAINT_NOT_SATISFIED");
+        yield {
+          type: "error",
+          generationId,
+          code: "MCP_CONSTRAINT_NOT_SATISFIED",
+          message: reason
+        };
+        return;
+      }
     }
 
     const hash = specHash(canonicalSpec);

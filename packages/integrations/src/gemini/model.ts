@@ -5,6 +5,7 @@ import type {
 } from "../interfaces";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { parseSseData } from "../shared/sse";
+import { ALLOWED_UI_COMPONENT_TYPES } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
@@ -30,17 +31,6 @@ interface GeminiGenerateRequest {
     responseSchema?: Record<string, unknown>;
   };
 }
-
-const PASS2_ALLOWED_COMPONENT_TYPES = [
-  "Card",
-  "CardHeader",
-  "CardTitle",
-  "CardDescription",
-  "CardContent",
-  "Button",
-  "Badge",
-  "Text"
-] as const;
 
 const PASS2_EXAMPLE_TREE = {
   id: "root",
@@ -97,7 +87,7 @@ function createGeminiNodeSchema(depth: number): Record<string, unknown> {
     required: ["id", "type"],
     properties: {
       id: { type: "STRING" },
-      type: { type: "STRING" },
+      type: { type: "STRING", enum: [...ALLOWED_UI_COMPONENT_TYPES] },
       props: { type: "OBJECT" }
     }
   };
@@ -139,7 +129,7 @@ function toPass1Prompt(input: ExtractComponentsInput): string {
 function toPass2Prompt(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const context = JSON.stringify(input.componentContext);
-  const allowedTypes = PASS2_ALLOWED_COMPONENT_TYPES.join(", ");
+  const allowedTypes = ALLOWED_UI_COMPONENT_TYPES.join(", ");
   const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
 
   return [

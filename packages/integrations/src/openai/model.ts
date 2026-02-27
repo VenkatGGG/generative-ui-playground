@@ -5,7 +5,7 @@ import type {
 } from "../interfaces";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { parseSseData } from "../shared/sse";
-import { UI_COMPONENT_NODE_JSON_SCHEMA } from "../shared/ui-schema";
+import { ALLOWED_UI_COMPONENT_TYPES, UI_COMPONENT_NODE_JSON_SCHEMA } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_PASS1_MODEL = "gpt-4.1-mini";
@@ -36,17 +36,6 @@ interface OpenAIChatCompletionRequest {
         };
       };
 }
-
-const PASS2_ALLOWED_COMPONENT_TYPES = [
-  "Card",
-  "CardHeader",
-  "CardTitle",
-  "CardDescription",
-  "CardContent",
-  "Button",
-  "Badge",
-  "Text"
-] as const;
 
 const PASS2_EXAMPLE_TREE = {
   id: "root",
@@ -115,7 +104,7 @@ function toPass1Prompt(input: ExtractComponentsInput): string {
 function toPass2Prompt(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const context = JSON.stringify(input.componentContext);
-  const allowedTypes = PASS2_ALLOWED_COMPONENT_TYPES.join(", ");
+  const allowedTypes = ALLOWED_UI_COMPONENT_TYPES.join(", ");
   const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
 
   return [

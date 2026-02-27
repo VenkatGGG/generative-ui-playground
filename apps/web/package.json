@@ -4,11 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "pnpm --workspace-root build:packages",
     "dev": "next dev",
+    "prebuild": "pnpm --workspace-root build:packages",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --workspace-root build:packages",
     "test": "vitest run"
   },
   "dependencies": {

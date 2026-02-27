@@ -323,11 +323,7 @@ describe("runGeneration", () => {
         streamCall += 1;
 
         if (streamCall === 1) {
-          yield JSON.stringify({
-            id: "root",
-            type: "Card",
-            children: [{ id: "txt", type: "Text", children: ["first try"] }]
-          });
+          yield "not-json";
           return;
         }
 
@@ -361,40 +357,20 @@ describe("runGeneration", () => {
     expect(eventTypes.includes("error")).toBe(false);
   });
 
-  it("fails with MCP_CONSTRAINT_NOT_SATISFIED when all retries stay invalid", async () => {
+  it("applies deterministic fallback when all retries fail", async () => {
     const deps = createDeps();
-    let failureLogCode: string | null = null;
+    let streamCall = 0;
 
     deps.model = {
       ...deps.model,
       async *streamDesign() {
-        yield JSON.stringify({
-          id: "root",
-          type: "Card",
-          children: [{ id: "txt", type: "Text", children: ["still invalid"] }]
-        });
-      }
-    };
-
-    deps.persistence = {
-      ...deps.persistence,
-      async recordGenerationFailure(input) {
-        failureLogCode = input.errorCode;
-        return {
-          id: "failed-log",
-          generationId: input.generationId,
-          threadId: input.threadId,
-          warningCount: input.warningCount,
-          patchCount: input.patchCount,
-          durationMs: input.durationMs,
-          errorCode: input.errorCode,
-          createdAt: "2026-02-27T00:00:00.000Z"
-        };
+        streamCall += 1;
+        yield "bad-payload";
       }
     };
 
     const warningCodes: string[] = [];
-    const terminalEvents: Array<{ type: string; code?: string }> = [];
+    const terminalTypes: string[] = [];
 
     for await (const event of runGeneration(
       {
@@ -408,21 +384,50 @@ describe("runGeneration", () => {
         warningCodes.push(event.code);
       }
       if (event.type === "error" || event.type === "done") {
-        terminalEvents.push({
-          type: event.type,
-          code: "code" in event ? event.code : undefined
-        });
+        terminalTypes.push(event.type);
       }
     }
 
+    expect(streamCall).toBe(3);
     expect(warningCodes.filter((code) => code === "CONSTRAINT_RETRY").length).toBe(2);
-    expect(terminalEvents).toEqual([
-      {
-        type: "error",
-        code: "MCP_CONSTRAINT_NOT_SATISFIED"
+    expect(warningCodes.includes("FALLBACK_APPLIED")).toBe(true);
+    expect(terminalTypes).toEqual(["done"]);
+  });
+
+  it("repairs sparse candidate snapshots into valid card structure", async () => {
+    const deps = createDeps();
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesign() {
+        yield JSON.stringify({
+          id: "root",
+          type: "div",
+          children: ["Pro Plan", "$29/mo", "Start Free Trial"]
+        });
       }
-    ]);
-    expect(failureLogCode).toBe("MCP_CONSTRAINT_NOT_SATISFIED");
+    };
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt:
+          'Create a pricing card for "Pro Plan" with price "$29/mo" and primary CTA "Start Free Trial"',
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(warningCodes.includes("REPAIR_APPLIED")).toBe(true);
+    expect(eventTypes.includes("done")).toBe(true);
+    expect(eventTypes.includes("error")).toBe(false);
   });
 
   it("emits generation exception with concrete generationId when dependencies throw", async () => {

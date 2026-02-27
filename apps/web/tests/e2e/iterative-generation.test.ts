@@ -1,8 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { POST as generateRoute } from "../../app/api/generate/route";
-import { GET as getThreadRoute } from "../../app/api/threads/[threadId]/route";
-import { POST as revertRoute } from "../../app/api/threads/[threadId]/revert/route";
-import { POST as createThreadRoute } from "../../app/api/threads/route";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalEnv = { ...process.env };
 
 interface StreamEventLike {
   type: string;
@@ -45,7 +43,24 @@ function getDoneVersionId(events: StreamEventLike[]): string {
 }
 
 describe("iterative generation e2e", () => {
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      ADAPTER_MODE: "stub"
+    };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.resetModules();
+  });
+
   it("supports generate -> refine -> revert lineage", async () => {
+    const { POST: generateRoute } = await import("../../app/api/generate/route");
+    const { GET: getThreadRoute } = await import("../../app/api/threads/[threadId]/route");
+    const { POST: revertRoute } = await import("../../app/api/threads/[threadId]/revert/route");
+    const { POST: createThreadRoute } = await import("../../app/api/threads/route");
+
     const createResponse = await createThreadRoute(
       new Request("http://localhost/api/threads", {
         method: "POST",

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { POST as createThread } from "../threads/route";
-import { POST as generate } from "./route";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalEnv = { ...process.env };
 
 async function readSseEvents(response: Response): Promise<Array<{ type: string }>> {
   const text = await response.text();
@@ -13,7 +13,22 @@ async function readSseEvents(response: Response): Promise<Array<{ type: string }
 }
 
 describe("generate route", () => {
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      ADAPTER_MODE: "stub"
+    };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.resetModules();
+  });
+
   it("streams status/patch/done events", async () => {
+    const { POST: createThread } = await import("../threads/route");
+    const { POST: generate } = await import("./route");
+
     const createResponse = await createThread(
       new Request("http://localhost/api/threads", {
         method: "POST",
@@ -47,6 +62,9 @@ describe("generate route", () => {
   });
 
   it("returns 409 for stale base version ids", async () => {
+    const { POST: createThread } = await import("../threads/route");
+    const { POST: generate } = await import("./route");
+
     const createResponse = await createThread(
       new Request("http://localhost/api/threads", {
         method: "POST",
