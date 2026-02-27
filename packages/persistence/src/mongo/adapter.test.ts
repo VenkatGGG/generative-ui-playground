@@ -193,6 +193,9 @@ describe("MongoPersistenceAdapter", () => {
 
     expect(persisted.version.versionId).toBe("id-5");
     expect(persisted.message.role).toBe("assistant");
+    expect(persisted.message.meta?.patchCount).toBe(3);
+    expect(persisted.message.meta?.durationMs).toBe(25);
+    expect(persisted.message.meta?.specHash).toBe("hash-1");
     expect(persisted.log.patchCount).toBe(3);
     expect(persisted.log.durationMs).toBe(25);
 

@@ -127,7 +127,11 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       content: "Generation complete",
       createdAt: timestamp,
       meta: {
-        warningCount: input.warnings.length
+        warningCount: input.warnings.length,
+        patchCount: input.patchCount,
+        durationMs: input.durationMs,
+        specHash: input.specHash,
+        mcpContextUsed: input.mcpContextUsed
       }
     };
 

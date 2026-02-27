@@ -38,6 +38,9 @@ describe("InMemoryPersistenceAdapter", () => {
     expect(persisted.version.threadId).toBe(thread.threadId);
     expect(persisted.log.patchCount).toBe(2);
     expect(persisted.log.durationMs).toBe(12);
+    expect(persisted.message.meta?.patchCount).toBe(2);
+    expect(persisted.message.meta?.durationMs).toBe(12);
+    expect(persisted.message.meta?.specHash).toBe("hash");
     expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
     expect(failureLog.durationMs).toBe(4);
     expect(bundle?.versions.length).toBeGreaterThan(0);
