@@ -15,5 +15,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@repo/contracts": "workspace:*",
+    "@repo/integrations": "workspace:*",
+    "@repo/persistence": "workspace:*",
+    "@repo/spec-engine": "workspace:*"
   }
 }
