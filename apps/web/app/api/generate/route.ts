@@ -40,10 +40,21 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (parsed.data.baseVersionId) {
-    const baseVersion = await runtimeDeps.persistence.getVersion(
-      parsed.data.threadId,
-      parsed.data.baseVersionId
-    );
+    let baseVersion;
+    try {
+      baseVersion = await runtimeDeps.persistence.getVersion(
+        parsed.data.threadId,
+        parsed.data.baseVersionId
+      );
+    } catch (error) {
+      return Response.json(
+        {
+          error: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Failed to read base version."
+        },
+        { status: 500 }
+      );
+    }
 
     if (!baseVersion) {
       return Response.json(
