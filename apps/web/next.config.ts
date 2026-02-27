@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["mongodb"],
   transpilePackages: [
     "@repo/contracts",
     "@repo/spec-engine",

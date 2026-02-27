@@ -1,5 +1,5 @@
 import { RevertRequestSchema } from "@repo/contracts";
-import { runtimeDeps } from "@/lib/server/runtime";
+import { getRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
 
@@ -8,6 +8,7 @@ export async function POST(
   context: { params: Promise<{ threadId: string }> }
 ): Promise<Response> {
   const { threadId } = await context.params;
+  const runtimeDeps = await getRuntimeDeps();
   const payload = await request.json().catch(() => ({}));
   const parsed = RevertRequestSchema.safeParse(payload);
 

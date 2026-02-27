@@ -1,5 +1,5 @@
 import { CreateThreadRequestSchema } from "@repo/contracts";
-import { runtimeDeps } from "@/lib/server/runtime";
+import { getRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
 
@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const runtimeDeps = await getRuntimeDeps();
   const thread = await runtimeDeps.persistence.createThread(parsed.data);
   const bundle = await runtimeDeps.persistence.getThreadBundle(thread.threadId);
 
