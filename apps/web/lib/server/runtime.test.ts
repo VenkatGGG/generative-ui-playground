@@ -27,7 +27,6 @@ describe("runtime adapter selection", () => {
   it("fails fast when real mode is missing required env", async () => {
     process.env.ADAPTER_MODE = "real";
     delete process.env.GEMINI_API_KEY;
-    process.env.MCP_ENDPOINT = "https://mcp.example.com";
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
@@ -39,7 +38,6 @@ describe("runtime adapter selection", () => {
     process.env.ADAPTER_MODE = "real";
     process.env.LLM_PROVIDER = "openai";
     delete process.env.OPENAI_API_KEY;
-    process.env.MCP_ENDPOINT = "https://mcp.example.com";
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
@@ -50,7 +48,6 @@ describe("runtime adapter selection", () => {
   it("fails fast for unsupported llm providers", async () => {
     process.env.ADAPTER_MODE = "real";
     process.env.LLM_PROVIDER = "anthropic";
-    process.env.MCP_ENDPOINT = "https://mcp.example.com";
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
@@ -60,7 +57,6 @@ describe("runtime adapter selection", () => {
 
   it("allows retry after an initialization failure", async () => {
     process.env.ADAPTER_MODE = "real";
-    process.env.MCP_ENDPOINT = "https://mcp.example.com";
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
     delete process.env.GEMINI_API_KEY;

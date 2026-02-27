@@ -39,9 +39,15 @@ Open `http://localhost:3000`.
 
 When `ADAPTER_MODE=real`, required env vars are:
 
-- Shared: `MCP_ENDPOINT`, `MONGODB_URI`, `MONGODB_DB_NAME`
+- Shared: `MONGODB_URI`, `MONGODB_DB_NAME`
 - Gemini: `GEMINI_API_KEY` (+ optional `GEMINI_BASE_URL`, `GEMINI_PASS1_MODEL`, `GEMINI_PASS2_MODEL`)
 - OpenAI: `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`, `OPENAI_PASS1_MODEL`, `OPENAI_PASS2_MODEL`)
+
+Context provider in `real` mode:
+
+- Default: direct shadcn registry adapter using `https://ui.shadcn.com/r/{name}.json`.
+- Optional override template: `SHADCN_REGISTRY_URL_TEMPLATE`.
+- Optional HTTP adapter override: set `MCP_ENDPOINT` (and optional `MCP_API_KEY`) to use an external context service.
 
 ## Verification
 

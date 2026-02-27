@@ -1,6 +1,7 @@
 import {
   createGenerationModelAdapter,
   createMcpHttpAdapter,
+  createShadcnRegistryAdapter,
   createStubGenerationModel,
   createStubMcpAdapter,
   type LLMProvider,
@@ -41,7 +42,6 @@ function readEnv(name: string): string {
 }
 
 async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
-  const mcpEndpoint = readEnv("MCP_ENDPOINT");
   const mongoUri = readEnv("MONGODB_URI");
   const mongoDbName = readEnv("MONGODB_DB_NAME");
   const llmProvider = resolveLlmProvider();
@@ -69,10 +69,15 @@ async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
 
   const model = createGenerationModelAdapter(modelConfig);
 
-  const mcp = createMcpHttpAdapter({
-    endpoint: mcpEndpoint,
-    apiKey: process.env.MCP_API_KEY
-  });
+  const mcpEndpoint = process.env.MCP_ENDPOINT;
+  const mcp = mcpEndpoint
+    ? createMcpHttpAdapter({
+        endpoint: mcpEndpoint,
+        apiKey: process.env.MCP_API_KEY
+      })
+    : createShadcnRegistryAdapter({
+        itemUrlTemplate: process.env.SHADCN_REGISTRY_URL_TEMPLATE
+      });
 
   const { MongoPersistenceAdapter } = await import("@repo/persistence/mongo");
   const persistence = await MongoPersistenceAdapter.connect({
