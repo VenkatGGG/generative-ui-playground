@@ -1,3 +1,4 @@
+import type { OrchestratorDeps } from "@repo/orchestrator";
 import { getRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
@@ -7,7 +8,20 @@ export async function GET(
   context: { params: Promise<{ threadId: string }> }
 ): Promise<Response> {
   const { threadId } = await context.params;
-  const runtimeDeps = await getRuntimeDeps();
+  let runtimeDeps: OrchestratorDeps;
+  try {
+    runtimeDeps = await getRuntimeDeps();
+  } catch (error) {
+    return Response.json(
+      {
+        error: "RUNTIME_DEPENDENCY_ERROR",
+        message:
+          error instanceof Error ? error.message : "Failed to initialize runtime dependencies."
+      },
+      { status: 500 }
+    );
+  }
+
   const bundle = await runtimeDeps.persistence.getThreadBundle(threadId);
 
   if (!bundle) {
