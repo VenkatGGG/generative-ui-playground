@@ -20,7 +20,15 @@ function resolveMode(): RuntimeMode {
 
 function resolveLlmProvider(): LlmProvider {
   const raw = process.env.LLM_PROVIDER?.toLowerCase();
-  return raw === "openai" ? "openai" : "gemini";
+  if (!raw || raw === "gemini") {
+    return "gemini";
+  }
+
+  if (raw === "openai") {
+    return "openai";
+  }
+
+  throw new Error(`Unsupported LLM_PROVIDER '${raw}'. Supported providers: gemini, openai.`);
 }
 
 function readEnv(name: string): string {

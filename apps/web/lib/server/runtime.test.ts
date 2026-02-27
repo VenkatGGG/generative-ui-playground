@@ -46,4 +46,15 @@ describe("runtime adapter selection", () => {
     const { getRuntimeDeps } = await import("./runtime");
     await expect(getRuntimeDeps()).rejects.toThrow("OPENAI_API_KEY");
   });
+
+  it("fails fast for unsupported llm providers", async () => {
+    process.env.ADAPTER_MODE = "real";
+    process.env.LLM_PROVIDER = "anthropic";
+    process.env.MCP_ENDPOINT = "https://mcp.example.com";
+    process.env.MONGODB_URI = "mongodb://localhost:27017";
+    process.env.MONGODB_DB_NAME = "genui";
+
+    const { getRuntimeDeps } = await import("./runtime");
+    await expect(getRuntimeDeps()).rejects.toThrow("Unsupported LLM_PROVIDER");
+  });
 });
