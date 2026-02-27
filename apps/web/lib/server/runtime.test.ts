@@ -57,4 +57,24 @@ describe("runtime adapter selection", () => {
     const { getRuntimeDeps } = await import("./runtime");
     await expect(getRuntimeDeps()).rejects.toThrow("Unsupported LLM_PROVIDER");
   });
+
+  it("allows retry after an initialization failure", async () => {
+    process.env.ADAPTER_MODE = "real";
+    process.env.MCP_ENDPOINT = "https://mcp.example.com";
+    process.env.MONGODB_URI = "mongodb://localhost:27017";
+    process.env.MONGODB_DB_NAME = "genui";
+    delete process.env.GEMINI_API_KEY;
+
+    const { getRuntimeDeps } = await import("./runtime");
+    await expect(getRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
+
+    process.env.ADAPTER_MODE = "stub";
+    const deps = await getRuntimeDeps();
+    const extracted = await deps.model.extractComponents({
+      prompt: "Render a card",
+      previousSpec: null
+    });
+
+    expect(extracted.components.length).toBeGreaterThan(0);
+  });
 });

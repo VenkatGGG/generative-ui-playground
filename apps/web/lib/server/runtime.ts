@@ -101,7 +101,10 @@ async function createRuntimeDeps(): Promise<OrchestratorDeps> {
 
 export function getRuntimeDeps(): Promise<OrchestratorDeps> {
   if (!runtimeDepsPromise) {
-    runtimeDepsPromise = createRuntimeDeps();
+    runtimeDepsPromise = createRuntimeDeps().catch((error: unknown) => {
+      runtimeDepsPromise = null;
+      throw error;
+    });
   }
 
   return runtimeDepsPromise;
