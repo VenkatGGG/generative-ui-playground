@@ -20,10 +20,30 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function matchesFilter<T extends object>(doc: T, filter: Partial<T>): boolean {
+function matchesFilter<T extends object>(doc: T, filter: Record<string, unknown>): boolean {
   const docRecord = doc as Record<string, unknown>;
-  const filterRecord = filter as Record<string, unknown>;
-  return Object.entries(filterRecord).every(([key, value]) => docRecord[key] === value);
+  if (Array.isArray(filter.$or)) {
+    const orMatched = filter.$or.some((entry) => matchesFilter(doc, entry as Record<string, unknown>));
+    if (!orMatched) {
+      return false;
+    }
+  }
+
+  return Object.entries(filter).every(([key, value]) => {
+    if (key === "$or") {
+      return true;
+    }
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const maybeOperator = value as Record<string, unknown>;
+      if ("$exists" in maybeOperator) {
+        const exists = docRecord[key] !== undefined;
+        return exists === Boolean(maybeOperator.$exists);
+      }
+    }
+
+    return docRecord[key] === value;
+  });
 }
 
 function createCollection<T extends object>(seed: T[] = []) {
@@ -48,11 +68,11 @@ function createCollection<T extends object>(seed: T[] = []) {
         insertedIds: {}
       };
     },
-    async findOne(filter: Partial<T>) {
+    async findOne(filter: Record<string, unknown>) {
       const hit = docs.find((doc) => matchesFilter(doc, filter));
       return hit ? clone(hit) : null;
     },
-    find(filter: Partial<T>) {
+    find(filter: Record<string, unknown>) {
       const filtered = docs.filter((doc) => matchesFilter(doc, filter));
       return {
         sort(sortSpec: Record<string, 1 | -1>) {
@@ -90,7 +110,7 @@ function createCollection<T extends object>(seed: T[] = []) {
         }
       };
     },
-    async updateOne(filter: Partial<T>, update: { $set?: Partial<T> }): Promise<UpdateResult> {
+    async updateOne(filter: Record<string, unknown>, update: { $set?: Partial<T> }): Promise<UpdateResult> {
       const index = docs.findIndex((doc) => matchesFilter(doc, filter));
       if (index < 0) {
         return {
@@ -225,5 +245,67 @@ describe("MongoPersistenceAdapter", () => {
     expect(bundle?.messages.length).toBe(2);
     expect(logs.length).toBe(2);
     expect(logs.some((log) => log.errorCode === "GENERATION_EXCEPTION")).toBe(true);
+  });
+
+  it("persists v2 create/generate/revert flow with schema versioned records", async () => {
+    const threads = createCollection<ThreadDoc>();
+    const messages = createCollection<MessageDoc>();
+    const versions = createCollection<Record<string, unknown>>();
+    const generationLogs = createCollection<GenerationLogDoc>();
+
+    const db = createFakeDb({
+      threads,
+      messages,
+      versions,
+      generationLogs
+    });
+
+    let idCounter = 100;
+    const adapter = new MongoPersistenceAdapter(db, {
+      now: () => "2026-02-27T00:00:00.000Z",
+      idFactory: () => {
+        idCounter += 1;
+        return `id-${idCounter}`;
+      }
+    });
+
+    const thread = await adapter.createThreadV2({ title: "Test Thread V2" });
+    expect(thread.threadId).toBe("id-101");
+
+    const persisted = await adapter.persistGenerationV2({
+      threadId: thread.threadId,
+      generationId: "gen-v2-1",
+      prompt: "Build semantic card",
+      assistantResponseText: "{\"tree\":{\"id\":\"root\",\"type\":\"Card\"}}",
+      assistantReasoningText: "Generated semantic v2 card.",
+      baseVersionId: thread.activeVersionId,
+      specSnapshot: {
+        root: "root",
+        elements: {
+          root: {
+            type: "Card",
+            props: {},
+            children: []
+          }
+        },
+        state: {
+          rows: []
+        }
+      },
+      specHash: "hash-v2",
+      mcpContextUsed: ["Card", "Stack"],
+      warnings: [],
+      patchCount: 2,
+      durationMs: 10
+    });
+
+    expect(persisted.version.schemaVersion).toBe("v2");
+
+    const reverted = await adapter.revertThreadV2(thread.threadId, persisted.version.versionId);
+    expect(reverted.schemaVersion).toBe("v2");
+
+    const bundle = await adapter.getThreadBundleV2(thread.threadId);
+    expect(bundle?.versions.length).toBe(3);
+    expect(bundle?.versions.every((version) => version.schemaVersion === "v2")).toBe(true);
   });
 });

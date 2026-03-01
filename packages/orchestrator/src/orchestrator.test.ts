@@ -58,6 +58,15 @@ function createDeps(): {
         updatedAt: now
       };
     },
+    async createThreadV2() {
+      return {
+        threadId: "thread-1-v2",
+        title: "Thread",
+        activeVersionId: "version-1-v2",
+        createdAt: now,
+        updatedAt: now
+      };
+    },
     async getThreadBundle() {
       return {
         thread: {
@@ -71,7 +80,23 @@ function createDeps(): {
         versions: []
       };
     },
+    async getThreadBundleV2() {
+      return {
+        thread: {
+          threadId: "thread-1-v2",
+          title: "Thread",
+          activeVersionId: "version-1-v2",
+          createdAt: now,
+          updatedAt: now
+        },
+        messages: [],
+        versions: []
+      };
+    },
     async getVersion() {
+      return null;
+    },
+    async getVersionV2() {
       return null;
     },
     async persistGeneration(input) {
@@ -105,6 +130,38 @@ function createDeps(): {
         }
       };
     },
+    async persistGenerationV2(input) {
+      return {
+        version: {
+          versionId: "version-2-v2",
+          threadId: input.threadId,
+          baseVersionId: input.baseVersionId,
+          specSnapshot: input.specSnapshot,
+          specHash: input.specHash,
+          mcpContextUsed: input.mcpContextUsed,
+          schemaVersion: "v2",
+          createdAt: now
+        },
+        message: {
+          id: "m1-v2",
+          threadId: input.threadId,
+          generationId: input.generationId,
+          role: "assistant",
+          content: input.assistantResponseText,
+          reasoning: input.assistantReasoningText,
+          createdAt: now
+        },
+        log: {
+          id: "log1-v2",
+          generationId: input.generationId,
+          threadId: input.threadId,
+          warningCount: input.warnings.length,
+          patchCount: input.patchCount,
+          durationMs: input.durationMs,
+          createdAt: now
+        }
+      };
+    },
     async recordGenerationFailure(input) {
       return {
         id: "log-failure",
@@ -118,6 +175,9 @@ function createDeps(): {
       };
     },
     async revertThread() {
+      throw new Error("not used");
+    },
+    async revertThreadV2() {
       throw new Error("not used");
     }
   };

@@ -71,4 +71,40 @@ describe("InMemoryPersistenceAdapter", () => {
     expect(bundleB.thread.title).toBe("Mutation Test");
     expect(bundleB.versions[0]!.specHash).toBe("");
   });
+
+  it("supports v2 thread/version lifecycle with schemaVersion tracking", async () => {
+    const adapter = new InMemoryPersistenceAdapter();
+    const thread = await adapter.createThreadV2({ title: "V2 Thread" });
+
+    const persisted = await adapter.persistGenerationV2({
+      threadId: thread.threadId,
+      generationId: "g-v2",
+      prompt: "Build semantic v2 card",
+      assistantResponseText: "{\"tree\":{\"id\":\"root\",\"type\":\"Card\"}}",
+      assistantReasoningText: "Generated semantic v2 snapshot.",
+      baseVersionId: null,
+      specSnapshot: {
+        root: "root",
+        elements: {
+          root: { type: "Card", props: {}, children: [] }
+        },
+        state: {
+          count: 1
+        }
+      },
+      specHash: "hash-v2",
+      mcpContextUsed: ["Card", "Stack"],
+      warnings: [],
+      patchCount: 1,
+      durationMs: 8
+    });
+
+    const reverted = await adapter.revertThreadV2(thread.threadId, persisted.version.versionId);
+    const bundle = await adapter.getThreadBundleV2(thread.threadId);
+
+    expect(persisted.version.schemaVersion).toBe("v2");
+    expect(reverted.schemaVersion).toBe("v2");
+    expect(bundle?.versions[0]?.schemaVersion).toBe("v2");
+    expect(bundle?.thread.activeVersionId).toBe(reverted.versionId);
+  });
 });

@@ -1,5 +1,10 @@
 import type { MCPAdapter, MCPComponentContext } from "../interfaces";
-import { COMPONENT_CATALOG, canonicalizeCatalogComponentType } from "@repo/component-catalog";
+import {
+  COMPONENT_CATALOG,
+  COMPONENT_CATALOG_V2,
+  canonicalizeCatalogComponentType,
+  canonicalizeCatalogComponentTypeV2
+} from "@repo/component-catalog";
 
 type FetchLike = typeof fetch;
 
@@ -14,6 +19,28 @@ const CATALOG_ALLOWED_PROPS = new Map<string, readonly string[]>(
 const CATALOG_VARIANTS = new Map<string, readonly string[]>(
   COMPONENT_CATALOG.map((entry) => [entry.type, entry.variants ?? []] as const)
 );
+const CATALOG_SUPPORTED_EVENTS = new Map<string, readonly string[]>(
+  COMPONENT_CATALOG_V2.map((entry) => [entry.type, entry.supportedEvents ?? []] as const)
+);
+
+function resolveBindingHintsByType(type: string): string[] {
+  if (type === "Input" || type === "Textarea" || type === "Select") {
+    return ["Use value with {\"$bindState\":\"/path\"} for two-way bindings."];
+  }
+  if (type === "Checkbox") {
+    return ["Use checked with {\"$bindState\":\"/path\"} for two-way bindings."];
+  }
+  if (type === "Text" || type === "Badge" || type === "CardTitle" || type === "CardDescription") {
+    return ["Use {\"$state\":\"/path\"}, {\"$item\":\"field\"}, or {\"$index\":true} for dynamic content."];
+  }
+  if (type === "Button") {
+    return ["Bind on.press actions to setState/pushState/removeState/validateForm."];
+  }
+  if (type === "Stack" || type === "CardContent") {
+    return ["Use repeat with statePath to iterate arrays."];
+  }
+  return [];
+}
 
 export interface ShadcnRegistryAdapterOptions {
   itemUrlTemplate?: string;
@@ -184,6 +211,17 @@ function resolveVariants(componentName: string, variantHints: string[]): string[
   return variants ? [...variants] : [];
 }
 
+function resolveSupportedEvents(componentName: string): string[] {
+  const normalized = canonicalizeCatalogComponentTypeV2(componentName);
+  const events = CATALOG_SUPPORTED_EVENTS.get(normalized);
+  return events ? [...events] : [];
+}
+
+function resolveBindingHints(componentName: string): string[] {
+  const normalized = canonicalizeCatalogComponentTypeV2(componentName);
+  return resolveBindingHintsByType(normalized);
+}
+
 type LookupResult = {
   payload: RegistryItemPayload | null;
   errorMessage: string | null;
@@ -255,6 +293,8 @@ export function createShadcnRegistryAdapter(options: ShadcnRegistryAdapterOption
           allowedProps: resolveAllowedProps(componentName),
           variants: resolveVariants(componentName, variantHints),
           compositionRules: resolveCompositionRules(componentName),
+          supportedEvents: resolveSupportedEvents(componentName),
+          bindingHints: resolveBindingHints(componentName),
           notes: buildRuleNotes(
             componentName,
             itemName,

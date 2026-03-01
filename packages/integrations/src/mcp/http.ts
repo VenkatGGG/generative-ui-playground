@@ -32,6 +32,8 @@ function sanitizeComponentRules(
         allowedProps: [],
         variants: [],
         compositionRules: [],
+        supportedEvents: [],
+        bindingHints: [],
         notes: "No MCP rule details returned by server."
       }));
   }
@@ -47,6 +49,8 @@ function sanitizeComponentRules(
         allowedProps?: unknown;
         variants?: unknown;
         compositionRules?: unknown;
+        supportedEvents?: unknown;
+        bindingHints?: unknown;
         notes?: unknown;
       };
 
@@ -59,6 +63,8 @@ function sanitizeComponentRules(
         allowedProps: sanitizeStringArray(record.allowedProps),
         variants: sanitizeStringArray(record.variants),
         compositionRules: sanitizeStringArray(record.compositionRules),
+        supportedEvents: sanitizeStringArray(record.supportedEvents),
+        bindingHints: sanitizeStringArray(record.bindingHints),
         notes: typeof record.notes === "string" ? record.notes : ""
       };
     })
@@ -73,6 +79,8 @@ function sanitizeComponentRules(
     allowedProps: [],
     variants: [],
     compositionRules: [],
+    supportedEvents: [],
+    bindingHints: [],
     notes: "No MCP rule details returned by server."
   }));
 }

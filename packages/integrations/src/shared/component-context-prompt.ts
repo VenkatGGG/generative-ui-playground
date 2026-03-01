@@ -14,9 +14,11 @@ export function buildComponentContextPromptSection(context: MCPComponentContext)
     const composition = rule.compositionRules.length > 0
       ? rule.compositionRules.join(" ")
       : "none";
+    const events = rule.supportedEvents?.length ? rule.supportedEvents.join(", ") : "none";
+    const bindingHints = rule.bindingHints?.length ? rule.bindingHints.join(" ") : "none";
 
     lines.push(
-      `- ${rule.name}: allowedProps [${props}]; variants [${variants}]; composition [${composition}]; notes: ${rule.notes}`
+      `- ${rule.name}: allowedProps [${props}]; variants [${variants}]; composition [${composition}]; events [${events}]; bindingHints [${bindingHints}]; notes: ${rule.notes}`
     );
   }
 

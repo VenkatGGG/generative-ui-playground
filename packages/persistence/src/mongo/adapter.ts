@@ -4,12 +4,15 @@ import type {
   GenerationLogRecord,
   MessageRecord,
   ThreadBundle,
+  ThreadBundleV2,
   ThreadRecord,
-  VersionRecord
+  VersionRecord,
+  VersionRecordV2
 } from "@repo/contracts";
 import type {
   CreateThreadInput,
   PersistGenerationInput,
+  PersistGenerationV2Input,
   PersistenceAdapter,
   RecordGenerationFailureInput
 } from "../interfaces";
@@ -21,10 +24,21 @@ interface CollectionNames {
   generationLogs: string;
 }
 
+interface MongoVersionDocument {
+  versionId: string;
+  threadId: string;
+  baseVersionId: string | null;
+  specSnapshot: unknown;
+  specHash: string;
+  mcpContextUsed: string[];
+  schemaVersion?: "v1" | "v2";
+  createdAt: string;
+}
+
 interface MongoDocuments {
   thread: ThreadRecord & { _id?: unknown };
   message: MessageRecord & { _id?: unknown };
-  version: VersionRecord & { _id?: unknown };
+  version: MongoVersionDocument;
   generationLog: GenerationLogRecord & { _id?: unknown };
 }
 
@@ -49,6 +63,13 @@ export interface MongoPersistenceFromUriOptions extends Omit<MongoPersistenceAda
 }
 
 function createInitialSpec(): VersionRecord["specSnapshot"] {
+  return {
+    root: "",
+    elements: {}
+  };
+}
+
+function createInitialSpecV2(): VersionRecordV2["specSnapshot"] {
   return {
     root: "",
     elements: {}
@@ -83,11 +104,34 @@ function toVersionRecord(doc: MongoDocuments["version"]): VersionRecord {
     versionId: doc.versionId,
     threadId: doc.threadId,
     baseVersionId: doc.baseVersionId,
-    specSnapshot: doc.specSnapshot,
+    specSnapshot: doc.specSnapshot as VersionRecord["specSnapshot"],
     specHash: doc.specHash,
     mcpContextUsed: doc.mcpContextUsed,
     createdAt: doc.createdAt
   };
+}
+
+function toVersionRecordV2(doc: MongoDocuments["version"]): VersionRecordV2 {
+  return {
+    versionId: doc.versionId,
+    threadId: doc.threadId,
+    baseVersionId: doc.baseVersionId,
+    specSnapshot: doc.specSnapshot as VersionRecordV2["specSnapshot"],
+    specHash: doc.specHash,
+    mcpContextUsed: doc.mcpContextUsed,
+    schemaVersion: "v2",
+    createdAt: doc.createdAt
+  };
+}
+
+function v1VersionQuery(): Record<string, unknown> {
+  return {
+    $or: [{ schemaVersion: { $exists: false } }, { schemaVersion: "v1" }]
+  };
+}
+
+function v2VersionQuery(): Record<string, unknown> {
+  return { schemaVersion: "v2" };
 }
 
 export class MongoPersistenceAdapter implements PersistenceAdapter {
@@ -147,13 +191,44 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       updatedAt: timestamp
     };
 
-    const initialVersion: VersionRecord = {
+    const initialVersion: MongoVersionDocument = {
       versionId: initialVersionId,
       threadId,
       baseVersionId: null,
       specSnapshot: createInitialSpec(),
       specHash: "",
       mcpContextUsed: [],
+      schemaVersion: "v1",
+      createdAt: timestamp
+    };
+
+    await this.threads.insertOne(thread);
+    await this.versions.insertOne(initialVersion);
+
+    return thread;
+  }
+
+  public async createThreadV2(input: CreateThreadInput): Promise<ThreadRecord> {
+    const threadId = this.idFactory();
+    const initialVersionId = this.idFactory();
+    const timestamp = this.now();
+
+    const thread: ThreadRecord = {
+      threadId,
+      title: input.title ?? "Untitled Thread",
+      activeVersionId: initialVersionId,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    const initialVersion: MongoVersionDocument = {
+      versionId: initialVersionId,
+      threadId,
+      baseVersionId: null,
+      specSnapshot: createInitialSpecV2(),
+      specHash: "",
+      mcpContextUsed: [],
+      schemaVersion: "v2",
       createdAt: timestamp
     };
 
@@ -170,7 +245,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
     }
 
     const messages = await this.messages.find({ threadId }).sort({ createdAt: 1 }).toArray();
-    const versions = await this.versions.find({ threadId }).sort({ createdAt: -1 }).toArray();
+    const versions = await this.versions.find({ threadId, ...v1VersionQuery() }).sort({ createdAt: -1 }).toArray();
 
     return {
       thread: toThreadRecord(thread),
@@ -179,9 +254,25 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
     };
   }
 
+  public async getThreadBundleV2(threadId: string): Promise<ThreadBundleV2 | null> {
+    const thread = await this.threads.findOne({ threadId });
+    if (!thread) {
+      return null;
+    }
+
+    const messages = await this.messages.find({ threadId }).sort({ createdAt: 1 }).toArray();
+    const versions = await this.versions.find({ threadId, ...v2VersionQuery() }).sort({ createdAt: -1 }).toArray();
+
+    return {
+      thread: toThreadRecord(thread),
+      messages: messages.map(toMessageRecord),
+      versions: versions.map(toVersionRecordV2)
+    };
+  }
+
   public async getVersion(threadId: string, versionId: string | null): Promise<VersionRecord | null> {
     if (versionId) {
-      const version = await this.versions.findOne({ threadId, versionId });
+      const version = await this.versions.findOne({ threadId, versionId, ...v1VersionQuery() });
       return version ? toVersionRecord(version) : null;
     }
 
@@ -192,10 +283,31 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
 
     const active = await this.versions.findOne({
       threadId,
-      versionId: thread.activeVersionId
+      versionId: thread.activeVersionId,
+      ...v1VersionQuery()
     });
 
     return active ? toVersionRecord(active) : null;
+  }
+
+  public async getVersionV2(threadId: string, versionId: string | null): Promise<VersionRecordV2 | null> {
+    if (versionId) {
+      const version = await this.versions.findOne({ threadId, versionId, ...v2VersionQuery() });
+      return version ? toVersionRecordV2(version) : null;
+    }
+
+    const thread = await this.threads.findOne({ threadId });
+    if (!thread) {
+      return null;
+    }
+
+    const active = await this.versions.findOne({
+      threadId,
+      versionId: thread.activeVersionId,
+      ...v2VersionQuery()
+    });
+
+    return active ? toVersionRecordV2(active) : null;
   }
 
   public async persistGeneration(
@@ -234,13 +346,14 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       }
     };
 
-    const version: VersionRecord = {
+    const version: MongoVersionDocument = {
       versionId: this.idFactory(),
       threadId: input.threadId,
       baseVersionId: input.baseVersionId,
       specSnapshot: input.specSnapshot,
       specHash: input.specHash,
       mcpContextUsed: input.mcpContextUsed,
+      schemaVersion: "v1",
       createdAt: timestamp
     };
 
@@ -258,7 +371,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
     await this.versions.insertOne(version);
     await this.generationLogs.insertOne(log);
 
-    const updateResult = await this.threads.updateOne(
+    await this.threads.updateOne(
       { threadId: input.threadId },
       {
         $set: {
@@ -268,12 +381,87 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       }
     );
 
-    if (updateResult.matchedCount !== 1) {
+    return {
+      version: toVersionRecord(version),
+      message: assistantMessage,
+      log
+    };
+  }
+
+  public async persistGenerationV2(
+    input: PersistGenerationV2Input
+  ): Promise<{ version: VersionRecordV2; message: MessageRecord; log: GenerationLogRecord }> {
+    const thread = await this.threads.findOne({ threadId: input.threadId });
+    if (!thread) {
       throw new Error(`Thread '${input.threadId}' not found.`);
     }
 
+    const timestamp = this.now();
+
+    const userMessage: MessageRecord = {
+      id: this.idFactory(),
+      threadId: input.threadId,
+      generationId: input.generationId,
+      role: "user",
+      content: input.prompt,
+      createdAt: timestamp
+    };
+
+    const assistantMessage: MessageRecord = {
+      id: this.idFactory(),
+      threadId: input.threadId,
+      generationId: input.generationId,
+      role: "assistant",
+      content: input.assistantResponseText,
+      reasoning: input.assistantReasoningText,
+      createdAt: timestamp,
+      meta: {
+        warningCount: input.warnings.length,
+        patchCount: input.patchCount,
+        durationMs: input.durationMs,
+        specHash: input.specHash,
+        mcpContextUsed: input.mcpContextUsed,
+        schemaVersion: "v2"
+      }
+    };
+
+    const version: MongoVersionDocument = {
+      versionId: this.idFactory(),
+      threadId: input.threadId,
+      baseVersionId: input.baseVersionId,
+      specSnapshot: input.specSnapshot,
+      specHash: input.specHash,
+      mcpContextUsed: input.mcpContextUsed,
+      schemaVersion: "v2",
+      createdAt: timestamp
+    };
+
+    const log: GenerationLogRecord = {
+      id: this.idFactory(),
+      generationId: input.generationId,
+      threadId: input.threadId,
+      warningCount: input.warnings.length,
+      patchCount: input.patchCount,
+      durationMs: input.durationMs,
+      createdAt: timestamp
+    };
+
+    await this.messages.insertMany([userMessage, assistantMessage]);
+    await this.versions.insertOne(version);
+    await this.generationLogs.insertOne(log);
+
+    await this.threads.updateOne(
+      { threadId: input.threadId },
+      {
+        $set: {
+          activeVersionId: version.versionId,
+          updatedAt: timestamp
+        }
+      }
+    );
+
     return {
-      version,
+      version: toVersionRecordV2(version),
       message: assistantMessage,
       log
     };
@@ -310,7 +498,8 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
 
     const target = await this.versions.findOne({
       threadId,
-      versionId: targetVersionId
+      versionId: targetVersionId,
+      ...v1VersionQuery()
     });
 
     if (!target) {
@@ -318,19 +507,20 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
     }
 
     const timestamp = this.now();
-    const revertVersion: VersionRecord = {
+    const revertVersion: MongoVersionDocument = {
       versionId: this.idFactory(),
       threadId,
       baseVersionId: targetVersionId,
       specSnapshot: structuredClone(target.specSnapshot),
       specHash: target.specHash,
       mcpContextUsed: target.mcpContextUsed,
+      schemaVersion: "v1",
       createdAt: timestamp
     };
 
     await this.versions.insertOne(revertVersion);
 
-    const updateResult = await this.threads.updateOne(
+    await this.threads.updateOne(
       { threadId },
       {
         $set: {
@@ -340,10 +530,49 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       }
     );
 
-    if (updateResult.matchedCount !== 1) {
+    return toVersionRecord(revertVersion);
+  }
+
+  public async revertThreadV2(threadId: string, targetVersionId: string): Promise<VersionRecordV2> {
+    const thread = await this.threads.findOne({ threadId });
+    if (!thread) {
       throw new Error(`Thread '${threadId}' not found.`);
     }
 
-    return revertVersion;
+    const target = await this.versions.findOne({
+      threadId,
+      versionId: targetVersionId,
+      ...v2VersionQuery()
+    });
+
+    if (!target) {
+      throw new Error(`Version '${targetVersionId}' not found.`);
+    }
+
+    const timestamp = this.now();
+    const revertVersion: MongoVersionDocument = {
+      versionId: this.idFactory(),
+      threadId,
+      baseVersionId: targetVersionId,
+      specSnapshot: structuredClone(target.specSnapshot),
+      specHash: target.specHash,
+      mcpContextUsed: target.mcpContextUsed,
+      schemaVersion: "v2",
+      createdAt: timestamp
+    };
+
+    await this.versions.insertOne(revertVersion);
+
+    await this.threads.updateOne(
+      { threadId },
+      {
+        $set: {
+          activeVersionId: revertVersion.versionId,
+          updatedAt: timestamp
+        }
+      }
+    );
+
+    return toVersionRecordV2(revertVersion);
   }
 }

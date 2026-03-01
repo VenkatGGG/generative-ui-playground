@@ -13,6 +13,8 @@ describe("createMcpHttpAdapter", () => {
               allowedProps: ["className", "variant"],
               variants: ["default", "outline"],
               compositionRules: ["Include CardHeader and CardContent"],
+              supportedEvents: ["press"],
+              bindingHints: ["Use on.press"],
               notes: "Card layout rules"
             }
           ]
@@ -42,6 +44,8 @@ describe("createMcpHttpAdapter", () => {
         allowedProps: ["className", "variant"],
         variants: ["default", "outline"],
         compositionRules: ["Include CardHeader and CardContent"],
+        supportedEvents: ["press"],
+        bindingHints: ["Use on.press"],
         notes: "Card layout rules"
       }
     ]);
@@ -72,5 +76,7 @@ describe("createMcpHttpAdapter", () => {
     expect(context.componentRules).toHaveLength(2);
     expect(context.componentRules[0]?.name).toBe("Button");
     expect(context.componentRules[1]?.name).toBe("Badge");
+    expect(context.componentRules[0]?.supportedEvents).toEqual([]);
+    expect(context.componentRules[1]?.bindingHints).toEqual([]);
   });
 });

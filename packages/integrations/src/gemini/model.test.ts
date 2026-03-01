@@ -102,4 +102,54 @@ describe("createGeminiGenerationModel", () => {
     expect(chunks[0]).toContain('"type":"Card"');
     expect(chunks[1]).toContain('"children":[]');
   });
+
+  it("streams v2 semantic snapshots with provider schema constraints", async () => {
+    const ssePayload = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"{\\"state\\":{},\\"tree\\":{\\"id\\":\\"root\\",\\"type\\":\\"Card\\"}}\\n"}]}}]}',
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n");
+
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        generationConfig?: { responseSchema?: unknown };
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+
+      expect(body.generationConfig?.responseSchema).toBeDefined();
+      const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
+      expect(prompt).toContain("SEMANTIC CONTRACT");
+      expect(prompt).toContain("visible");
+      expect(prompt).toContain("repeat");
+      expect(prompt).toContain("on for events");
+
+      return new Response(ssePayload, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      });
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      fetchImpl
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of adapter.streamDesignV2!({
+      prompt: "build a dynamic pricing form",
+      previousSpec: null,
+      componentContext: {
+        contextVersion: "ctx-v2",
+        componentRules: []
+      }
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain('"tree"');
+  });
 });

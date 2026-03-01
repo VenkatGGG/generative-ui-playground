@@ -5,7 +5,10 @@ import type {
 } from "../interfaces";
 import {
   ALLOWED_COMPONENT_TYPES,
+  ALLOWED_COMPONENT_TYPES_V2,
   PASS2_EXAMPLE_TREE,
+  PASS2_EXAMPLE_TREE_V2,
+  buildPass2CatalogSectionV2,
   buildPass2CatalogSection
 } from "@repo/component-catalog";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
@@ -63,6 +66,131 @@ function createGeminiNodeSchema(depth: number): Record<string, unknown> {
 
 const GEMINI_UI_COMPONENT_NODE_SCHEMA = createGeminiNodeSchema(4);
 
+function createGeminiActionBindingSchema(): Record<string, unknown> {
+  return {
+    type: "OBJECT",
+    required: ["action"],
+    properties: {
+      action: {
+        type: "STRING",
+        enum: ["setState", "pushState", "removeState", "validateForm"]
+      },
+      params: {
+        type: "OBJECT"
+      }
+    }
+  };
+}
+
+function createGeminiVisibilitySchema(depth: number): Record<string, unknown> {
+  const visibilityRef: Record<string, unknown> = {
+    type: "OBJECT",
+    properties: {
+      $state: { type: "STRING" },
+      eq: {},
+      neq: {},
+      gt: { type: "NUMBER" },
+      gte: { type: "NUMBER" },
+      lt: { type: "NUMBER" },
+      lte: { type: "NUMBER" },
+      not: { type: "BOOLEAN" }
+    }
+  };
+
+  if (depth > 1) {
+    return {
+      anyOf: [
+        { type: "BOOLEAN" },
+        visibilityRef,
+        {
+          type: "OBJECT",
+          properties: {
+            $and: {
+              type: "ARRAY",
+              items: createGeminiVisibilitySchema(depth - 1)
+            }
+          }
+        },
+        {
+          type: "OBJECT",
+          properties: {
+            $or: {
+              type: "ARRAY",
+              items: createGeminiVisibilitySchema(depth - 1)
+            }
+          }
+        }
+      ]
+    };
+  }
+
+  return {
+    anyOf: [{ type: "BOOLEAN" }, visibilityRef]
+  };
+}
+
+function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
+  const schema: Record<string, unknown> = {
+    type: "OBJECT",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "STRING" },
+      type: { type: "STRING", enum: [...ALLOWED_COMPONENT_TYPES_V2] },
+      props: { type: "OBJECT" },
+      visible: createGeminiVisibilitySchema(3),
+      repeat: {
+        type: "OBJECT",
+        required: ["statePath"],
+        properties: {
+          statePath: { type: "STRING" },
+          key: { type: "STRING" }
+        }
+      },
+      on: {
+        type: "OBJECT",
+        additionalProperties: {
+          anyOf: [
+            createGeminiActionBindingSchema(),
+            { type: "ARRAY", items: createGeminiActionBindingSchema() }
+          ]
+        }
+      },
+      watch: {
+        type: "OBJECT",
+        additionalProperties: {
+          anyOf: [
+            createGeminiActionBindingSchema(),
+            { type: "ARRAY", items: createGeminiActionBindingSchema() }
+          ]
+        }
+      }
+    }
+  };
+
+  const childOptions: Array<Record<string, unknown>> = [{ type: "STRING" }];
+  if (depth > 1) {
+    childOptions.push(createGeminiNodeSchemaV2(depth - 1));
+  }
+
+  (schema.properties as Record<string, unknown>).children = {
+    type: "ARRAY",
+    items: childOptions.length === 1 ? childOptions[0] : { anyOf: childOptions }
+  };
+
+  return schema;
+}
+
+const GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA: Record<string, unknown> = {
+  type: "OBJECT",
+  required: ["tree"],
+  properties: {
+    state: {
+      type: "OBJECT"
+    },
+    tree: createGeminiNodeSchemaV2(5)
+  }
+};
+
 function buildGenerateEndpoint(baseUrl: string, model: string, apiKey: string): string {
   return `${baseUrl.replace(/\/$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 }
@@ -101,6 +229,33 @@ function toPass2Prompt(input: StreamDesignInput): string {
     "- Textual UI content must be represented as string children.",
     "Generate visually complete output with meaningful copy and spacing cues, not skeletal placeholders.",
     "Reference example of a valid complete snapshot:",
+    example,
+    contextSection,
+    `Prompt: ${input.prompt}`,
+    `PreviousSpec: ${previousSpec}`
+  ].join("\n");
+}
+
+function toPass2PromptV2(input: StreamDesignInput): string {
+  const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
+  const contextSection = buildComponentContextPromptSection(input.componentContext);
+  const example = JSON.stringify(PASS2_EXAMPLE_TREE_V2, null, 2);
+  const catalogSection = buildPass2CatalogSectionV2();
+
+  return [
+    "You generate rich semantic UI tree snapshots for a React runtime.",
+    "Output newline-delimited JSON objects only.",
+    "Each line must be one complete object with shape: { state?: object, tree: UIComponentNodeV2 }.",
+    "No markdown, no explanations.",
+    catalogSection,
+    "SEMANTIC CONTRACT:",
+    "- Use visible for conditional rendering (boolean, $state comparators, $and, $or, not).",
+    "- Use repeat with statePath for array iteration.",
+    "- Use on for events: press/change/submit with actions setState/pushState/removeState/validateForm.",
+    "- Use watch for state-path triggered actions.",
+    "- Use dynamic expressions in props/params: {$state}, {$item}, {$index}, {$bindState}, {$bindItem}.",
+    "- Return complete visually rich layouts; never return empty skeletons.",
+    "Reference example of a valid semantic snapshot:",
     example,
     contextSection,
     `Prompt: ${input.prompt}`,
@@ -256,6 +411,14 @@ export function createGeminiGenerationModel(
         fetchImpl,
         endpoint,
         toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA)
+      );
+    },
+    streamDesignV2(input) {
+      const endpoint = buildStreamEndpoint(baseUrl, pass2Model, options.apiKey);
+      return streamGemini(
+        fetchImpl,
+        endpoint,
+        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA)
       );
     }
   };

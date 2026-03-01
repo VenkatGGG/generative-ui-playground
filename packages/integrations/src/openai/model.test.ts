@@ -98,4 +98,55 @@ describe("createOpenAIGenerationModel", () => {
     expect(chunks[0]).toContain('"type":"Card"');
     expect(chunks[1]).toContain('"children":[]');
   });
+
+  it("streams v2 semantic snapshots with json_schema strict mode", async () => {
+    const ssePayload = [
+      'data: {"choices":[{"delta":{"content":"{\\"state\\":{},\\"tree\\":{\\"id\\":\\"root\\",\\"type\\":\\"Card\\"}}\\n"}}]}',
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n");
+
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        messages?: Array<{ content?: string }>;
+        response_format?: {
+          type?: string;
+          json_schema?: { strict?: boolean; schema?: unknown };
+        };
+      };
+
+      expect(body.response_format?.type).toBe("json_schema");
+      expect(body.response_format?.json_schema?.strict).toBe(true);
+      expect(body.response_format?.json_schema?.schema).toBeDefined();
+      expect(body.messages?.[0]?.content ?? "").toContain("SEMANTIC CONTRACT");
+
+      return new Response(ssePayload, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      });
+    };
+
+    const adapter = createOpenAIGenerationModel({
+      apiKey: "test-key",
+      fetchImpl
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of adapter.streamDesignV2!({
+      prompt: "build a dynamic pricing form",
+      previousSpec: null,
+      componentContext: {
+        contextVersion: "ctx-v2",
+        componentRules: []
+      }
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain('"tree"');
+  });
 });

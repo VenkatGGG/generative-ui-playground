@@ -1,8 +1,8 @@
-import type { UIComponentNode, UISpec } from "@repo/contracts";
+import type { UIComponentNode, UISpec, UISpecV2 } from "@repo/contracts";
 
 export interface ExtractComponentsInput {
   prompt: string;
-  previousSpec: UISpec | null;
+  previousSpec: UISpec | UISpecV2 | null;
 }
 
 export interface ExtractComponentsResult {
@@ -13,7 +13,13 @@ export interface ExtractComponentsResult {
 
 export interface StreamDesignInput {
   prompt: string;
-  previousSpec: UISpec | null;
+  previousSpec: UISpec | UISpecV2 | null;
+  componentContext: MCPComponentContext;
+}
+
+export interface StreamDesignInputV2 {
+  prompt: string;
+  previousSpec: UISpecV2 | null;
   componentContext: MCPComponentContext;
 }
 
@@ -24,6 +30,8 @@ export interface MCPComponentContext {
     allowedProps: string[];
     variants: string[];
     compositionRules: string[];
+    supportedEvents: string[];
+    bindingHints: string[];
     notes: string;
   }>;
 }
@@ -31,6 +39,7 @@ export interface MCPComponentContext {
 export interface GenerationModelAdapter {
   extractComponents(input: ExtractComponentsInput): Promise<ExtractComponentsResult>;
   streamDesign(input: StreamDesignInput): AsyncIterable<string>;
+  streamDesignV2?(input: StreamDesignInputV2): AsyncIterable<string>;
 }
 
 export interface MCPAdapter {

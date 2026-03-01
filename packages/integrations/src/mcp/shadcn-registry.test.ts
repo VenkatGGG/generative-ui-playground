@@ -81,6 +81,10 @@ describe("createShadcnRegistryAdapter", () => {
         allowedProps: ["className", "variant"],
         variants: ["default", "secondary", "outline", "destructive"],
         compositionRules: [],
+        supportedEvents: [],
+        bindingHints: [
+          "Use {\"$state\":\"/path\"}, {\"$item\":\"field\"}, or {\"$index\":true} for dynamic content."
+        ],
         notes:
           "Registry lookup for 'Badge' using item 'badge' failed. HTTP 404"
       }
