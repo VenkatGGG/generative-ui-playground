@@ -120,6 +120,9 @@ describe("createGeminiGenerationModel", () => {
       expect(body.generationConfig?.responseSchema).toBeDefined();
       const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
       expect(prompt).toContain("SEMANTIC CONTRACT");
+      expect(prompt).toContain("PROMPT PACK:");
+      expect(prompt).toContain("GOOD_EXAMPLE_1");
+      expect(prompt).toContain("ANTI-SKELETON");
       expect(prompt).toContain("visible");
       expect(prompt).toContain("repeat");
       expect(prompt).toContain("on for events");

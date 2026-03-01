@@ -13,6 +13,10 @@ import {
 } from "@repo/component-catalog";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { buildComponentContextPromptSection } from "../shared/component-context-prompt";
+import {
+  buildPass2ContractBlock,
+  buildPromptSkillSection
+} from "../shared/prompt-skill";
 import { parseSseData } from "../shared/sse";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -215,13 +219,14 @@ function toPass2Prompt(input: StreamDesignInput): string {
   const contextSection = buildComponentContextPromptSection(input.componentContext);
   const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
   const catalogSection = buildPass2CatalogSection();
+  const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: false });
+  const contractSection = buildPass2ContractBlock(false);
 
   return [
-    "You generate rich UI tree snapshots for a React renderer.",
-    "Output newline-delimited JSON objects only.",
-    "Each line must be one complete UIComponentNode object with id,type,props?,children?.",
-    "No markdown, no explanations.",
+    "You generate rich UI tree snapshots for a React renderer with strict contract compliance.",
+    contractSection,
     catalogSection,
+    skillSection,
     "Composition rules:",
     "- Card must contain CardHeader with CardTitle and optional CardDescription.",
     "- Card must contain CardContent for the body/actions.",
@@ -241,13 +246,14 @@ function toPass2PromptV2(input: StreamDesignInput): string {
   const contextSection = buildComponentContextPromptSection(input.componentContext);
   const example = JSON.stringify(PASS2_EXAMPLE_TREE_V2, null, 2);
   const catalogSection = buildPass2CatalogSectionV2();
+  const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: true });
+  const contractSection = buildPass2ContractBlock(true);
 
   return [
-    "You generate rich semantic UI tree snapshots for a React runtime.",
-    "Output newline-delimited JSON objects only.",
-    "Each line must be one complete object with shape: { state?: object, tree: UIComponentNodeV2 }.",
-    "No markdown, no explanations.",
+    "You generate rich semantic UI tree snapshots for a React runtime with strict contract compliance.",
+    contractSection,
     catalogSection,
+    skillSection,
     "SEMANTIC CONTRACT:",
     "- Use visible for conditional rendering (boolean, $state comparators, $and, $or, not).",
     "- Use repeat with statePath for array iteration.",

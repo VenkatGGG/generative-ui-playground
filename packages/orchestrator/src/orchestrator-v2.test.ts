@@ -284,4 +284,90 @@ describe("runGenerationV2", () => {
 
     expect(events).toEqual([{ type: "error", code: "BASE_VERSION_CONFLICT" }]);
   });
+
+  it("retries v2 pass2 using validator feedback before succeeding", async () => {
+    const deps = createDeps();
+    const prompts: string[] = [];
+    let callCount = 0;
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2(input) {
+        prompts.push(input.prompt);
+        callCount += 1;
+
+        if (callCount === 1) {
+          yield JSON.stringify({
+            tree: {
+              id: "root",
+              type: "Card",
+              children: [{ id: "title", type: "CardTitle", children: ["Tiny"] }]
+            }
+          });
+          return;
+        }
+
+        yield JSON.stringify({
+          state: {
+            features: [
+              { id: "1", label: "Priority support" },
+              { id: "2", label: "Unlimited projects" },
+              { id: "3", label: "Team collaboration" }
+            ]
+          },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+                  { id: "desc", type: "CardDescription", children: ["For startups"] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "price", type: "Text", children: ["$29/mo"] },
+                  {
+                    id: "feature-list",
+                    type: "Stack",
+                    repeat: { statePath: "/features", key: "id" },
+                    children: [{ id: "feature", type: "Text", props: { text: { $item: "label" } }, children: [] }]
+                  },
+                  { id: "cta-primary", type: "Button", children: ["Start Free Trial"] },
+                  { id: "cta-secondary", type: "Button", props: { variant: "outline" }, children: ["View Docs"] }
+                ]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a pricing card with title, price, features and CTAs",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(callCount).toBe(2);
+    expect(prompts[1]).toContain("Retry attempt 2");
+    expect(prompts[1]).toContain("V2_SPARSE_OUTPUT");
+    expect(warningCodes).toContain("CONSTRAINT_RETRY");
+    expect(eventTypes).toContain("done");
+  });
 });

@@ -120,6 +120,9 @@ describe("createOpenAIGenerationModel", () => {
       expect(body.response_format?.json_schema?.strict).toBe(true);
       expect(body.response_format?.json_schema?.schema).toBeDefined();
       expect(body.messages?.[0]?.content ?? "").toContain("SEMANTIC CONTRACT");
+      expect(body.messages?.[0]?.content ?? "").toContain("PROMPT PACK:");
+      expect(body.messages?.[0]?.content ?? "").toContain("GOOD_EXAMPLE_1");
+      expect(body.messages?.[0]?.content ?? "").toContain("ANTI-SKELETON");
 
       return new Response(ssePayload, {
         status: 200,

@@ -8,7 +8,12 @@ import {
 } from "@repo/contracts";
 import { getAllowedComponentTypeSetV2 } from "@repo/component-catalog";
 import { diffSpecs, normalizeTreeToSpecV2, validateSpecV2 } from "@repo/spec-engine";
-import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
+import {
+  buildRetryPromptWithValidationFeedback,
+  estimatePromptPackMinElements,
+  type GenerationModelAdapter,
+  type MCPAdapter
+} from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
 
@@ -17,6 +22,8 @@ export interface OrchestratorDepsV2 {
   mcp: MCPAdapter;
   persistence: PersistenceAdapter;
 }
+
+const MAX_PASS2_ATTEMPTS = 3;
 
 function specHash(spec: UISpecV2): string {
   return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
@@ -198,61 +205,149 @@ export async function* runGenerationV2(
     const mcpContext = await deps.mcp.fetchContext(pass1.components);
     const allowedComponentTypes = getAllowedComponentTypeSetV2();
 
-    yield { type: "status", generationId, stage: "pass2_stream_design_v2" };
-    const streamSource =
-      deps.model.streamDesignV2?.({
+    const minimumElementFloor = estimatePromptPackMinElements(
+      {
         prompt: request.prompt,
         previousSpec: baseVersion?.specSnapshot ?? null,
         componentContext: mcpContext
-      }) ??
-      deps.model.streamDesign({
-        prompt: request.prompt,
-        previousSpec: baseVersion?.specSnapshot ?? null,
-        componentContext: mcpContext
-      });
+      },
+      true
+    );
 
     let acceptedCandidate = false;
-    let buffer = "";
-    for await (const chunk of streamSource) {
-      modelOutputText += chunk;
-      buffer += chunk;
-      const extracted = extractCompleteJsonObjects(buffer);
-      buffer = extracted.remainder;
+    let sawAnyCandidate = false;
+    let lastValidationIssues: Array<{ code: string; message: string }> = [];
 
-      for (const objectText of extracted.objects) {
-        const snapshot = parseCandidateSnapshotV2(objectText);
-        if (!snapshot) {
-          continue;
-        }
+    for (let attempt = 1; attempt <= MAX_PASS2_ATTEMPTS; attempt += 1) {
+      yield {
+        type: "status",
+        generationId,
+        stage: attempt === 1 ? "pass2_stream_design_v2" : `pass2_stream_design_v2_retry_${attempt}`
+      };
 
-        const candidateSpec = normalizeTreeToSpecV2(snapshot);
-        const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
-        if (!validation.valid) {
-          for (const issue of validation.issues) {
-            const warning = {
-              type: "warning" as const,
-              generationId,
-              code: issue.code,
-              message: issue.message
-            };
-            warnings.push({ code: warning.code, message: warning.message });
-            yield warning;
+      const streamPrompt =
+        attempt === 1
+          ? request.prompt
+          : buildRetryPromptWithValidationFeedback(request.prompt, lastValidationIssues, attempt);
+
+      const streamSource =
+        deps.model.streamDesignV2?.({
+          prompt: streamPrompt,
+          previousSpec: baseVersion?.specSnapshot ?? null,
+          componentContext: mcpContext
+        }) ??
+        deps.model.streamDesign({
+          prompt: streamPrompt,
+          previousSpec: baseVersion?.specSnapshot ?? null,
+          componentContext: mcpContext
+        });
+
+      let acceptedOnAttempt = false;
+      let observedObjectOnAttempt = false;
+      let buffer = "";
+
+      try {
+        for await (const chunk of streamSource) {
+          modelOutputText += chunk;
+          buffer += chunk;
+          const extracted = extractCompleteJsonObjects(buffer);
+          buffer = extracted.remainder;
+
+          for (const objectText of extracted.objects) {
+            observedObjectOnAttempt = true;
+            const snapshot = parseCandidateSnapshotV2(objectText);
+            if (!snapshot) {
+              continue;
+            }
+
+            sawAnyCandidate = true;
+            const candidateSpec = normalizeTreeToSpecV2(snapshot);
+            const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
+            const semanticIssues = validation.valid
+              ? []
+              : validation.issues.map((issue) => ({ code: issue.code, message: issue.message }));
+            const sparseIssues =
+              Object.keys(candidateSpec.elements).length < minimumElementFloor
+                ? [
+                    {
+                      code: "V2_SPARSE_OUTPUT",
+                      message: `Output has ${Object.keys(candidateSpec.elements).length} elements; minimum expected is ${minimumElementFloor}.`
+                    }
+                  ]
+                : [];
+            const allIssues = [...semanticIssues, ...sparseIssues];
+
+            if (allIssues.length > 0) {
+              lastValidationIssues = allIssues;
+              for (const issue of allIssues) {
+                const warning = {
+                  type: "warning" as const,
+                  generationId,
+                  code: issue.code,
+                  message: issue.message
+                };
+                warnings.push({ code: warning.code, message: warning.message });
+                yield warning;
+              }
+              continue;
+            }
+
+            const patches = diffSpecs(canonicalSpec, candidateSpec);
+            for (const patch of patches) {
+              patchCount += 1;
+              yield {
+                type: "patch",
+                generationId,
+                patch
+              };
+            }
+
+            canonicalSpec = candidateSpec;
+            acceptedOnAttempt = true;
+            acceptedCandidate = true;
           }
-          continue;
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Pass 2 stream failed unexpectedly.";
+        const warning = {
+          type: "warning" as const,
+          generationId,
+          code: "PASS2_STREAM_FAILED",
+          message
+        };
+        warnings.push({ code: warning.code, message: warning.message });
+        yield warning;
+      }
 
-        const patches = diffSpecs(canonicalSpec, candidateSpec);
-        for (const patch of patches) {
-          patchCount += 1;
-          yield {
-            type: "patch",
-            generationId,
-            patch
-          };
-        }
+      if (!observedObjectOnAttempt && !acceptedOnAttempt && lastValidationIssues.length === 0) {
+        lastValidationIssues = [
+          {
+            code: "V2_NO_VALID_SNAPSHOT",
+            message: "No valid JSON snapshots were produced in this attempt."
+          }
+        ];
+      }
 
-        canonicalSpec = candidateSpec;
-        acceptedCandidate = true;
+      if (acceptedOnAttempt) {
+        break;
+      }
+
+      if (attempt < MAX_PASS2_ATTEMPTS) {
+        const feedbackSummary = lastValidationIssues
+          .slice(0, 3)
+          .map((issue) => `[${issue.code}]`)
+          .join(", ");
+        const retryWarning = {
+          type: "warning" as const,
+          generationId,
+          code: "CONSTRAINT_RETRY",
+          message:
+            feedbackSummary.length > 0
+              ? `Retrying generation with validator feedback ${feedbackSummary} (attempt ${attempt + 1}/${MAX_PASS2_ATTEMPTS}).`
+              : `Retrying generation (attempt ${attempt + 1}/${MAX_PASS2_ATTEMPTS}).`
+        };
+        warnings.push({ code: retryWarning.code, message: retryWarning.message });
+        yield retryWarning;
       }
     }
 
@@ -284,7 +379,10 @@ export async function* runGenerationV2(
         type: "warning" as const,
         generationId,
         code: "FALLBACK_APPLIED",
-        message: "Applied deterministic v2 fallback UI."
+        message:
+          sawAnyCandidate || lastValidationIssues.length > 0
+            ? `Applied deterministic v2 fallback UI after unsuccessful retries. Last issue: ${lastValidationIssues[0]?.code ?? "unknown"}.`
+            : "Applied deterministic v2 fallback UI."
       };
       warnings.push({ code: fallbackWarning.code, message: fallbackWarning.message });
       yield fallbackWarning;
