@@ -42,6 +42,12 @@ const STUB_COMPONENT_RULES: Record<string, StubRuleTemplate> = {
     compositionRules: ["Place Text, Badge, and Button nodes here for body/actions."],
     notes: "CardContent is required body area. Place Text, Badge, and Button actions here."
   },
+  cardfooter: {
+    allowedProps: ["className"],
+    variants: [],
+    compositionRules: ["Use CardFooter for bottom action row and compact controls."],
+    notes: "CardFooter is an optional bottom row for secondary actions or small inputs."
+  },
   button: {
     allowedProps: ["className", "variant", "size"],
     variants: ["default", "secondary", "outline", "destructive", "sm", "lg"],
@@ -59,6 +65,24 @@ const STUB_COMPONENT_RULES: Record<string, StubRuleTemplate> = {
     variants: [],
     compositionRules: ["Use string children or text prop for visible copy."],
     notes: "Text should carry visible body copy as string children."
+  },
+  input: {
+    allowedProps: ["className", "placeholder", "type", "value"],
+    variants: [],
+    compositionRules: ["Use short placeholders and avoid long paragraph content."],
+    notes: "Input is a single-line field for compact text entry."
+  },
+  textarea: {
+    allowedProps: ["className", "placeholder", "value", "rows"],
+    variants: [],
+    compositionRules: ["Use for multi-line notes or feedback text."],
+    notes: "Textarea is a multi-line field for longer content."
+  },
+  separator: {
+    allowedProps: ["className", "orientation"],
+    variants: ["horizontal", "vertical"],
+    compositionRules: ["Use between major card sections to improve visual hierarchy."],
+    notes: "Separator is a non-interactive divider line."
   }
 };
 
@@ -73,7 +97,7 @@ function resolveStubRule(componentName: string): StubRuleTemplate {
     variants: [],
     compositionRules: ["Prefer supported shadcn-like components from current catalog."],
     notes:
-      "Unsupported component in stub MCP context. Prefer Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Badge, and Text."
+      "Unsupported component in stub MCP context. Prefer Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Button, Badge, Text, Input, Textarea, and Separator."
   };
 }
 

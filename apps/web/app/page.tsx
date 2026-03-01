@@ -15,14 +15,25 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function asSeparatorOrientation(value: unknown): "horizontal" | "vertical" {
+  return value === "vertical" ? "vertical" : "horizontal";
 }
 
 function asButtonVariant(value: unknown): ButtonProps["variant"] | undefined {
@@ -66,6 +77,10 @@ function RegistryCardContent({ children, className }: RegisteredComponentProps) 
   return <CardContent className={asString(className)}>{children}</CardContent>;
 }
 
+function RegistryCardFooter({ children, className }: RegisteredComponentProps) {
+  return <CardFooter className={asString(className)}>{children}</CardFooter>;
+}
+
 function RegistryText({ text, children, className }: RegisteredComponentProps) {
   return <span className={asString(className)}>{typeof text === "string" ? text : children}</span>;
 }
@@ -86,15 +101,50 @@ function RegistryBadge({ children, className, variant }: RegisteredComponentProp
   );
 }
 
+function RegistryInput({ className, placeholder, type, value }: RegisteredComponentProps) {
+  return (
+    <Input
+      className={asString(className)}
+      placeholder={asString(placeholder)}
+      type={asString(type)}
+      defaultValue={asString(value)}
+    />
+  );
+}
+
+function RegistryTextarea({ className, placeholder, value, rows }: RegisteredComponentProps) {
+  return (
+    <Textarea
+      className={asString(className)}
+      placeholder={asString(placeholder)}
+      defaultValue={asString(value)}
+      rows={asNumber(rows)}
+    />
+  );
+}
+
+function RegistrySeparator({ className, orientation }: RegisteredComponentProps) {
+  return (
+    <Separator
+      className={asString(className)}
+      orientation={asSeparatorOrientation(orientation)}
+    />
+  );
+}
+
 const registry = createStrictRegistry({
   Card: RegistryCard,
   CardHeader: RegistryCardHeader,
   CardTitle: RegistryCardTitle,
   CardDescription: RegistryCardDescription,
   CardContent: RegistryCardContent,
+  CardFooter: RegistryCardFooter,
   Button: RegistryButton,
   Badge: RegistryBadge,
-  Text: RegistryText
+  Text: RegistryText,
+  Input: RegistryInput,
+  Textarea: RegistryTextarea,
+  Separator: RegistrySeparator
 });
 
 type UiMessage = {
