@@ -1,7 +1,7 @@
 import { compare } from "fast-json-patch";
-import type { JsonPatch, UISpec } from "@repo/contracts";
+import type { JsonPatch } from "@repo/contracts";
 
-export function diffSpecs(previous: UISpec, next: UISpec): JsonPatch[] {
+export function diffSpecs<TSpec extends object>(previous: TSpec, next: TSpec): JsonPatch[] {
   const patches = compare(previous, next) as JsonPatch[];
 
   // Keep deterministic ordering: path first, operation second.
