@@ -107,3 +107,33 @@ Failed generations also write a `generationLogs` entry with the terminal `errorC
 ```json
 { "error": "RUNTIME_DEPENDENCY_ERROR", "message": "..." }
 ```
+
+---
+
+## v2 Routes
+
+`v2` routes mirror v1 shape with semantic runtime support:
+
+- `POST /api/v2/threads`
+- `GET /api/v2/threads/:threadId`
+- `POST /api/v2/threads/:threadId/revert`
+- `POST /api/v2/generate`
+
+### POST `/api/v2/generate` Event Types
+
+```ts
+type StreamEventV2 =
+  | { type: "status"; generationId: string; stage: string }
+  | { type: "patch"; generationId: string; patch: JsonPatch }
+  | { type: "warning"; generationId: string; code: string; message: string }
+  | {
+      type: "usage";
+      generationId: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      model?: string;
+    }
+  | { type: "done"; generationId: string; versionId: string; specHash: string }
+  | { type: "error"; generationId: string; code: string; message: string };
+```

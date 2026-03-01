@@ -2,15 +2,20 @@
 
 import { useEffect, useMemo, useReducer, useState } from "react";
 import {
-  generationReducer,
-  initialGenerationState,
-  streamGenerate,
-  StreamGenerateError
+  generationReducerV2,
+  initialGenerationStateV2,
+  streamGenerateV2,
+  StreamGenerateErrorV2
 } from "@repo/client-core";
-import type { ThreadBundle, UISpec, VersionRecord } from "@repo/contracts";
-import { DynamicRenderer, createStrictRegistry, type RegisteredComponentProps } from "@repo/renderer-react";
+import type { ThreadBundleV2, UISpecV2, VersionRecordV2 } from "@repo/contracts";
+import {
+  DynamicRendererV2,
+  createStrictRegistryV2,
+  type RegisteredComponentPropsV2
+} from "@repo/renderer-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button, type ButtonProps } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -20,6 +25,7 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -34,6 +40,10 @@ function asNumber(value: unknown): number | undefined {
 
 function asSeparatorOrientation(value: unknown): "horizontal" | "vertical" {
   return value === "vertical" ? "vertical" : "horizontal";
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function asButtonVariant(value: unknown): ButtonProps["variant"] | undefined {
@@ -57,43 +67,86 @@ function asBadgeVariant(value: unknown): BadgeProps["variant"] | undefined {
   return undefined;
 }
 
-function RegistryCard({ children, className }: RegisteredComponentProps) {
+function asSelectOptions(value: unknown): SelectOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return { label: entry, value: entry } satisfies SelectOption;
+      }
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        const label = (entry as Record<string, unknown>).label;
+        const optionValue = (entry as Record<string, unknown>).value;
+        if (typeof label === "string" && typeof optionValue === "string") {
+          return { label, value: optionValue } satisfies SelectOption;
+        }
+      }
+      return null;
+    })
+    .filter((entry): entry is SelectOption => entry !== null);
+}
+
+function asChangeHandler(value: unknown): React.ChangeEventHandler<
+  HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+> | undefined {
+  return typeof value === "function"
+    ? (value as React.ChangeEventHandler<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>)
+    : undefined;
+}
+
+function asClickHandler(value: unknown): React.MouseEventHandler<HTMLButtonElement> | undefined {
+  return typeof value === "function" ? (value as React.MouseEventHandler<HTMLButtonElement>) : undefined;
+}
+
+function RegistryCard({ children, className }: RegisteredComponentPropsV2) {
   return <Card className={asString(className)}>{children}</Card>;
 }
 
-function RegistryCardHeader({ children, className }: RegisteredComponentProps) {
+function RegistryCardHeader({ children, className }: RegisteredComponentPropsV2) {
   return <CardHeader className={asString(className)}>{children}</CardHeader>;
 }
 
-function RegistryCardTitle({ children, className }: RegisteredComponentProps) {
+function RegistryCardTitle({ children, className }: RegisteredComponentPropsV2) {
   return <CardTitle className={asString(className)}>{children}</CardTitle>;
 }
 
-function RegistryCardDescription({ children, className }: RegisteredComponentProps) {
+function RegistryCardDescription({ children, className }: RegisteredComponentPropsV2) {
   return <CardDescription className={asString(className)}>{children}</CardDescription>;
 }
 
-function RegistryCardContent({ children, className }: RegisteredComponentProps) {
+function RegistryCardContent({ children, className }: RegisteredComponentPropsV2) {
   return <CardContent className={asString(className)}>{children}</CardContent>;
 }
 
-function RegistryCardFooter({ children, className }: RegisteredComponentProps) {
+function RegistryCardFooter({ children, className }: RegisteredComponentPropsV2) {
   return <CardFooter className={asString(className)}>{children}</CardFooter>;
 }
 
-function RegistryText({ text, children, className }: RegisteredComponentProps) {
-  return <span className={asString(className)}>{typeof text === "string" ? text : children}</span>;
+function RegistryText({ text, children, className }: RegisteredComponentPropsV2) {
+  const displayText =
+    typeof text === "string" || typeof text === "number" || typeof text === "boolean"
+      ? String(text)
+      : children;
+  return <span className={asString(className)}>{displayText}</span>;
 }
 
-function RegistryButton({ children, className, variant, size }: RegisteredComponentProps) {
+function RegistryButton({ children, className, variant, size, onClick, type }: RegisteredComponentPropsV2) {
   return (
-    <Button className={asString(className)} variant={asButtonVariant(variant)} size={asButtonSize(size)}>
+    <Button
+      className={asString(className)}
+      variant={asButtonVariant(variant)}
+      size={asButtonSize(size)}
+      onClick={asClickHandler(onClick)}
+      type={asString(type) === "submit" ? "submit" : "button"}
+    >
       {children}
     </Button>
   );
 }
 
-function RegistryBadge({ children, className, variant }: RegisteredComponentProps) {
+function RegistryBadge({ children, className, variant }: RegisteredComponentPropsV2) {
   return (
     <Badge className={asString(className)} variant={asBadgeVariant(variant)}>
       {children}
@@ -101,29 +154,37 @@ function RegistryBadge({ children, className, variant }: RegisteredComponentProp
   );
 }
 
-function RegistryInput({ className, placeholder, type, value }: RegisteredComponentProps) {
+function RegistryInput({ className, placeholder, type, value, onChange }: RegisteredComponentPropsV2) {
   return (
     <Input
       className={asString(className)}
       placeholder={asString(placeholder)}
       type={asString(type)}
-      defaultValue={asString(value)}
+      value={asString(value) ?? ""}
+      onChange={asChangeHandler(onChange)}
     />
   );
 }
 
-function RegistryTextarea({ className, placeholder, value, rows }: RegisteredComponentProps) {
+function RegistryTextarea({
+  className,
+  placeholder,
+  value,
+  rows,
+  onChange
+}: RegisteredComponentPropsV2) {
   return (
     <Textarea
       className={asString(className)}
       placeholder={asString(placeholder)}
-      defaultValue={asString(value)}
+      value={asString(value) ?? ""}
       rows={asNumber(rows)}
+      onChange={asChangeHandler(onChange)}
     />
   );
 }
 
-function RegistrySeparator({ className, orientation }: RegisteredComponentProps) {
+function RegistrySeparator({ className, orientation }: RegisteredComponentPropsV2) {
   return (
     <Separator
       className={asString(className)}
@@ -132,7 +193,35 @@ function RegistrySeparator({ className, orientation }: RegisteredComponentProps)
   );
 }
 
-const registry = createStrictRegistry({
+function RegistryCheckbox({ className, checked, label, onChange }: RegisteredComponentPropsV2) {
+  return (
+    <Checkbox
+      className={asString(className)}
+      checked={asBoolean(checked)}
+      label={asString(label)}
+      onChange={asChangeHandler(onChange)}
+    />
+  );
+}
+
+function RegistrySelect({ className, options, value, onChange }: RegisteredComponentPropsV2) {
+  return (
+    <Select
+      className={asString(className)}
+      options={asSelectOptions(options)}
+      value={asString(value)}
+      onChange={asChangeHandler(onChange)}
+    />
+  );
+}
+
+function RegistryStack({ children, className, direction, gap }: RegisteredComponentPropsV2) {
+  const directionClass = direction === "horizontal" ? "flex-row" : "flex-col";
+  const gapClass = typeof gap === "string" ? gap : "gap-2";
+  return <div className={cn("flex", directionClass, gapClass, asString(className))}>{children}</div>;
+}
+
+const registry = createStrictRegistryV2({
   Card: RegistryCard,
   CardHeader: RegistryCardHeader,
   CardTitle: RegistryCardTitle,
@@ -144,7 +233,10 @@ const registry = createStrictRegistry({
   Text: RegistryText,
   Input: RegistryInput,
   Textarea: RegistryTextarea,
-  Separator: RegistrySeparator
+  Separator: RegistrySeparator,
+  Checkbox: RegistryCheckbox,
+  Select: RegistrySelect,
+  Stack: RegistryStack
 });
 
 type UiMessage = {
@@ -159,13 +251,13 @@ type RevertState = {
   loading: boolean;
 };
 
-function findActiveSpec(bundle: ThreadBundle): UISpec | null {
+function findActiveSpec(bundle: ThreadBundleV2): UISpecV2 | null {
   const activeId = bundle.thread.activeVersionId;
   const active = bundle.versions.find((version) => version.versionId === activeId) ?? bundle.versions[0];
   return active?.specSnapshot ?? null;
 }
 
-function statusFromState(state: ReturnType<typeof generationReducer>): "idle" | "streaming" | "error" {
+function statusFromState(state: ReturnType<typeof generationReducerV2>): "idle" | "streaming" | "error" {
   if (state.error) {
     return "error";
   }
@@ -177,13 +269,13 @@ function statusFromState(state: ReturnType<typeof generationReducer>): "idle" | 
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState("");
-  const [bundle, setBundle] = useState<ThreadBundle | null>(null);
-  const [hydratedSpec, setHydratedSpec] = useState<UISpec | null>(null);
+  const [bundle, setBundle] = useState<ThreadBundleV2 | null>(null);
+  const [hydratedSpec, setHydratedSpec] = useState<UISpecV2 | null>(null);
   const [messages, setMessages] = useState<UiMessage[]>([]);
-  const [versions, setVersions] = useState<VersionRecord[]>([]);
+  const [versions, setVersions] = useState<VersionRecordV2[]>([]);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [revertState, setRevertState] = useState<RevertState>({ versionId: null, loading: false });
-  const [state, dispatch] = useReducer(generationReducer, initialGenerationState);
+  const [state, dispatch] = useReducer(generationReducerV2, initialGenerationStateV2);
 
   const status = statusFromState(state);
   const statusVariant = useMemo<"outline" | "secondary" | "destructive">(() => {
@@ -198,12 +290,12 @@ export default function HomePage() {
   }, [status]);
 
   const refreshThread = async (threadId: string) => {
-    const response = await fetch(`/api/threads/${threadId}`, { method: "GET" });
+    const response = await fetch(`/api/v2/threads/${threadId}`, { method: "GET" });
     if (!response.ok) {
       throw new Error(`Failed to load thread (${response.status})`);
     }
 
-    const nextBundle = (await response.json()) as ThreadBundle;
+    const nextBundle = (await response.json()) as ThreadBundleV2;
     setBundle(nextBundle);
     setVersions(nextBundle.versions);
     setMessages(
@@ -226,7 +318,7 @@ export default function HomePage() {
 
     const bootstrap = async () => {
       try {
-        const create = await fetch("/api/threads", {
+        const create = await fetch("/api/v2/threads", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: "Studio Session" })
@@ -269,8 +361,8 @@ export default function HomePage() {
     setThreadError(null);
 
     try {
-      await streamGenerate({
-        endpoint: "/api/generate",
+      await streamGenerateV2({
+        endpoint: "/api/v2/generate",
         body: {
           threadId: bundle.thread.threadId,
           prompt: text,
@@ -301,7 +393,7 @@ export default function HomePage() {
       setPrompt("");
     } catch (error) {
       if (
-        error instanceof StreamGenerateError &&
+        error instanceof StreamGenerateErrorV2 &&
         error.code === "HTTP_ERROR" &&
         error.status === 409
       ) {
@@ -310,7 +402,7 @@ export default function HomePage() {
         return;
       }
 
-      if (error instanceof StreamGenerateError && error.code === "STREAM_INTERRUPTED") {
+      if (error instanceof StreamGenerateErrorV2 && error.code === "STREAM_INTERRUPTED") {
         dispatch({
           type: "error",
           generationId: state.generationId ?? "unknown",
@@ -333,7 +425,7 @@ export default function HomePage() {
     setThreadError(null);
 
     try {
-      const response = await fetch(`/api/threads/${bundle.thread.threadId}/revert`, {
+      const response = await fetch(`/api/v2/threads/${bundle.thread.threadId}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ versionId })
@@ -454,7 +546,7 @@ export default function HomePage() {
               "overflow-auto"
             )}
           >
-            <DynamicRenderer spec={displaySpec ?? null} registry={registry} />
+            <DynamicRendererV2 spec={displaySpec ?? null} registry={registry} />
           </div>
         </section>
       </div>

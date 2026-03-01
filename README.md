@@ -2,6 +2,11 @@
 
 React-only generative UI platform implemented as a pnpm + Turbo monorepo.
 
+## API Versions
+
+- `v1` routes remain available under `/api/*`.
+- `v2` parity routes are available under `/api/v2/*` with semantic runtime support (`state`, `repeat`, `visible`, `on`, `watch`, dynamic bindings).
+
 ## Core Stack
 
 - Next.js App Router + React

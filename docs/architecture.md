@@ -1,5 +1,10 @@
 # Architecture
 
+## Versioning
+
+- `v1`: original tree+diff pipeline and static recursive rendering.
+- `v2`: versioned parity runtime with semantic contracts and `/api/v2/*` routes.
+
 ## Request Lifecycle
 
 1. Client sends `threadId`, `prompt`, `baseVersionId` to `POST /api/generate`.
@@ -13,6 +18,20 @@
 9. Client applies patches incrementally to local spec.
 10. Final version/messages/logs are persisted and `done` event is emitted.
 11. Failed generations emit `error` events and are logged with `generationLogs.errorCode`.
+
+## v2 Semantic Runtime
+
+`v2` adds runtime semantics in renderer/client/spec-engine:
+
+- Dynamic expressions: `$state`, `$item`, `$index`, `$bindState`, `$bindItem`
+- Conditional rendering: `visible` (boolean, comparator, `$and`, `$or`, `not`)
+- Array iteration: `repeat` with `statePath`
+- Action system:
+  - `on` event handlers (`press`, `change`, `submit`)
+  - `watch` state-path triggers
+  - Built-in actions: `setState`, `pushState`, `removeState`, `validateForm`
+- v2 stream events add `usage` token metadata
+- Persistence stores version lineage with `schemaVersion: "v2"` for v2 versions
 
 ## Core Guarantees
 
