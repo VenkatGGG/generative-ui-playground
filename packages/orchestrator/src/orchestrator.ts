@@ -133,32 +133,6 @@ function extractQuotedTokens(prompt: string): string[] {
   return uniqueStrings(tokens);
 }
 
-function extractTextSegmentsFromNode(node: UIComponentNode): string[] {
-  const texts: string[] = [];
-
-  const visit = (current: UIComponentNode): void => {
-    if (typeof current.props?.text === "string") {
-      texts.push(current.props.text);
-    }
-
-    if (!current.children) {
-      return;
-    }
-
-    for (const child of current.children) {
-      if (typeof child === "string") {
-        texts.push(child);
-        continue;
-      }
-
-      visit(child);
-    }
-  };
-
-  visit(node);
-  return uniqueStrings(texts);
-}
-
 function derivePromptHints(prompt: string, requiredTextTokens: string[]): {
   title: string;
   description: string;
@@ -488,40 +462,6 @@ export async function* runGeneration(
     ): Generator<StreamEvent, "accepted" | "rejected" | string, void> {
       const candidateSpec = normalizeTreeToSpec(candidateNode);
       const result = validateAndDiffCandidate(candidateSpec);
-
-      if (result.type === "invalid" && !result.fatalError) {
-        const repairedNode = buildDeterministicCardNode({
-          prompt: request.prompt,
-          requiredTextTokens: constraints.requiredTextTokens,
-          requiredComponentTypes: constraints.requiredComponentTypes,
-          sourceTexts: extractTextSegmentsFromNode(candidateNode)
-        });
-        const repairedSpec = normalizeTreeToSpec(repairedNode);
-        const repairedResult = validateAndDiffCandidate(repairedSpec);
-
-        if (repairedResult.type === "valid") {
-          const repairWarning = {
-            type: "warning" as const,
-            generationId,
-            code: "REPAIR_APPLIED",
-            message: "Applied server-side repair to transform sparse model output into a valid card structure."
-          };
-          warnings.push({ code: repairWarning.code, message: repairWarning.message });
-          yield repairWarning;
-
-          for (const patch of repairedResult.patches) {
-            patchCount += 1;
-            yield {
-              type: "patch",
-              generationId,
-              patch
-            };
-          }
-
-          canonicalSpec = repairedResult.nextSpec;
-          return "accepted";
-        }
-      }
 
       if (result.type === "invalid") {
         if (result.violations.length > 0) {

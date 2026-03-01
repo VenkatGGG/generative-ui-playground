@@ -166,6 +166,29 @@ describe("runGeneration", () => {
     expect(events.includes("done")).toBe(true);
   });
 
+  it("accepts valid model output without repair/fallback warnings", async () => {
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+
+    for await (const event of runGeneration(
+      {
+        threadId: "thread-1",
+        prompt: "Create a card with title Pro Plan and button Start Free Trial",
+        baseVersionId: null
+      },
+      createDeps()
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(eventTypes.includes("done")).toBe(true);
+    expect(warningCodes.includes("REPAIR_APPLIED")).toBe(false);
+    expect(warningCodes.includes("FALLBACK_APPLIED")).toBe(false);
+  });
+
   it("returns base version conflict for stale version ids", async () => {
     const events = [] as Array<{ type: string; code?: string }>;
 
@@ -394,7 +417,7 @@ describe("runGeneration", () => {
     expect(terminalTypes).toEqual(["done"]);
   });
 
-  it("repairs sparse candidate snapshots into valid card structure", async () => {
+  it("falls back when sparse candidate snapshots fail constraints", async () => {
     const deps = createDeps();
     const warningCodes: string[] = [];
     const eventTypes: string[] = [];
@@ -425,7 +448,8 @@ describe("runGeneration", () => {
       }
     }
 
-    expect(warningCodes.includes("REPAIR_APPLIED")).toBe(true);
+    expect(warningCodes.includes("REPAIR_APPLIED")).toBe(false);
+    expect(warningCodes.includes("FALLBACK_APPLIED")).toBe(true);
     expect(eventTypes.includes("done")).toBe(true);
     expect(eventTypes.includes("error")).toBe(false);
   });
