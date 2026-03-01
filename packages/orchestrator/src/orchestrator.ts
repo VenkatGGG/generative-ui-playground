@@ -43,6 +43,7 @@ function parseCandidateObject(input: string): UIComponentNode | null {
 
 const fatalValidationCodes = new Set(["MAX_DEPTH_EXCEEDED", "MAX_NODES_EXCEEDED"]);
 const MAX_PASS2_ATTEMPTS = 3;
+const DEFAULT_PASS2_STREAM_INACTIVITY_TIMEOUT_MS = 30_000;
 const QUOTED_TOKEN_RE = /["“”'‘’]([^"“”'‘’]{2,80})["“”'‘’]/g;
 const PRICE_TOKEN_RE = /\$\s?\d+(?:\.\d+)?(?:\s*\/\s*[a-zA-Z]+)?/;
 const PRIMARY_CTA_HINT_RE =
@@ -57,6 +58,40 @@ const DEFAULT_FEATURES = [
   "Custom workflows",
   "Export-ready reporting"
 ];
+
+function resolvePass2StreamInactivityTimeoutMs(): number {
+  const rawValue = process.env.PASS2_STREAM_INACTIVITY_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_PASS2_STREAM_INACTIVITY_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_PASS2_STREAM_INACTIVITY_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+async function nextWithInactivityTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs: number
+): Promise<IteratorResult<T> | "timeout"> {
+  const nextPromise = iterator.next();
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([nextPromise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
 
 function summarizePrompt(prompt: string): string {
   const trimmed = prompt.trim().replace(/\s+/g, " ");
@@ -523,11 +558,27 @@ export async function* runGeneration(
           : buildRetryPrompt(request.prompt, lastConstraintViolations, attempt);
 
       try {
-        for await (const chunk of deps.model.streamDesign({
+        const streamTimeoutMs = resolvePass2StreamInactivityTimeoutMs();
+        const streamIterator = deps.model.streamDesign({
           prompt: streamPrompt,
           previousSpec: baseVersion?.specSnapshot ?? null,
           componentContext: mcpContext
-        })) {
+        })[Symbol.asyncIterator]();
+
+        while (true) {
+          const nextResult = await nextWithInactivityTimeout(streamIterator, streamTimeoutMs);
+          if (nextResult === "timeout") {
+            await streamIterator.return?.();
+            throw new Error(
+              `Pass 2 stream inactivity timeout after ${streamTimeoutMs}ms without receiving a chunk.`
+            );
+          }
+
+          if (nextResult.done) {
+            break;
+          }
+
+          const chunk = nextResult.value;
           appendModelOutput(chunk);
           buffer += chunk;
           const extracted = extractCompleteJsonObjects(buffer);

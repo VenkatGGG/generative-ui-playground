@@ -417,6 +417,62 @@ describe("runGeneration", () => {
     expect(terminalTypes).toEqual(["done"]);
   });
 
+  it("times out stalled pass2 streams and applies fallback", async () => {
+    const previousTimeout = process.env.PASS2_STREAM_INACTIVITY_TIMEOUT_MS;
+    process.env.PASS2_STREAM_INACTIVITY_TIMEOUT_MS = "5";
+
+    try {
+      const deps = createDeps();
+      deps.model = {
+        ...deps.model,
+        streamDesign() {
+          return {
+            [Symbol.asyncIterator]() {
+              return {
+                async next() {
+                  return new Promise<IteratorResult<string>>(() => {
+                    // Intentionally never resolves to simulate an upstream stall.
+                  });
+                },
+                async return() {
+                  return { done: true, value: undefined };
+                }
+              };
+            }
+          };
+        }
+      };
+
+      const warningCodes: string[] = [];
+      const eventTypes: string[] = [];
+
+      for await (const event of runGeneration(
+        {
+          threadId: "thread-1",
+          prompt: "Build a card with a primary button",
+          baseVersionId: null
+        },
+        deps
+      )) {
+        eventTypes.push(event.type);
+        if (event.type === "warning") {
+          warningCodes.push(event.code);
+        }
+      }
+
+      expect(warningCodes.includes("PASS2_STREAM_FAILED")).toBe(true);
+      expect(warningCodes.includes("FALLBACK_APPLIED")).toBe(true);
+      expect(eventTypes.includes("done")).toBe(true);
+      expect(eventTypes.includes("error")).toBe(false);
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.PASS2_STREAM_INACTIVITY_TIMEOUT_MS;
+      } else {
+        process.env.PASS2_STREAM_INACTIVITY_TIMEOUT_MS = previousTimeout;
+      }
+    }
+  });
+
   it("falls back when sparse candidate snapshots fail constraints", async () => {
     const deps = createDeps();
     const warningCodes: string[] = [];
