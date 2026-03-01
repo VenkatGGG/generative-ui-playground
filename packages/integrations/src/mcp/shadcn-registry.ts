@@ -1,9 +1,19 @@
 import type { MCPAdapter, MCPComponentContext } from "../interfaces";
+import { COMPONENT_CATALOG, canonicalizeCatalogComponentType } from "@repo/component-catalog";
 
 type FetchLike = typeof fetch;
 
 const DEFAULT_ITEM_URL_TEMPLATE = "https://ui.shadcn.com/r/{name}.json";
 const DEFAULT_CONTEXT_VERSION = "shadcn-registry-v1";
+const CATALOG_RULES = new Map<string, readonly string[]>(
+  COMPONENT_CATALOG.map((entry) => [entry.type, entry.compositionRules ?? []] as const)
+);
+const CATALOG_ALLOWED_PROPS = new Map<string, readonly string[]>(
+  COMPONENT_CATALOG.map((entry) => [entry.type, entry.allowedProps] as const)
+);
+const CATALOG_VARIANTS = new Map<string, readonly string[]>(
+  COMPONENT_CATALOG.map((entry) => [entry.type, entry.variants ?? []] as const)
+);
 
 export interface ShadcnRegistryAdapterOptions {
   itemUrlTemplate?: string;
@@ -152,6 +162,28 @@ function buildRuleNotes(
   return segments.join(" ");
 }
 
+function resolveCompositionRules(componentName: string): string[] {
+  const normalized = canonicalizeCatalogComponentType(componentName);
+  const rules = CATALOG_RULES.get(normalized);
+  return rules ? [...rules] : [];
+}
+
+function resolveAllowedProps(componentName: string): string[] {
+  const normalized = canonicalizeCatalogComponentType(componentName);
+  const allowedProps = CATALOG_ALLOWED_PROPS.get(normalized);
+  return allowedProps ? [...allowedProps] : ["className"];
+}
+
+function resolveVariants(componentName: string, variantHints: string[]): string[] {
+  if (variantHints.length > 0) {
+    return variantHints;
+  }
+
+  const normalized = canonicalizeCatalogComponentType(componentName);
+  const variants = CATALOG_VARIANTS.get(normalized);
+  return variants ? [...variants] : [];
+}
+
 type LookupResult = {
   payload: RegistryItemPayload | null;
   errorMessage: string | null;
@@ -220,8 +252,9 @@ export function createShadcnRegistryAdapter(options: ShadcnRegistryAdapterOption
 
         return {
           name: componentName,
-          allowedProps: ["className"],
-          variants: variantHints,
+          allowedProps: resolveAllowedProps(componentName),
+          variants: resolveVariants(componentName, variantHints),
+          compositionRules: resolveCompositionRules(componentName),
           notes: buildRuleNotes(
             componentName,
             itemName,

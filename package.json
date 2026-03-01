@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "build": "turbo run build",
-    "build:packages": "pnpm --filter @repo/contracts --filter @repo/spec-engine --filter @repo/integrations --filter @repo/persistence --filter @repo/orchestrator --filter @repo/client-core --filter @repo/renderer-react build",
+    "build:packages": "pnpm --filter @repo/contracts --filter @repo/component-catalog --filter @repo/spec-engine --filter @repo/integrations --filter @repo/persistence --filter @repo/orchestrator --filter @repo/client-core --filter @repo/renderer-react build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "test": "turbo run test",

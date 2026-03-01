@@ -23,6 +23,7 @@ export interface MCPComponentContext {
     name: string;
     allowedProps: string[];
     variants: string[];
+    compositionRules: string[];
     notes: string;
   }>;
 }

@@ -59,6 +59,7 @@ describe("createShadcnRegistryAdapter", () => {
     expect(cardHeaderRule?.notes).toContain("Registry item: card");
     expect(buttonRule?.notes).toContain("Registry item: button");
     expect(textRule?.notes).toContain("No direct shadcn registry item");
+    expect(cardRule?.compositionRules.length).toBeGreaterThan(0);
 
     expect(cardRule?.variants).toContain("variant:default");
     expect(cardRule?.variants).toContain("size:sm");
@@ -77,8 +78,9 @@ describe("createShadcnRegistryAdapter", () => {
     expect(context.componentRules).toEqual([
       {
         name: "Badge",
-        allowedProps: ["className"],
-        variants: [],
+        allowedProps: ["className", "variant"],
+        variants: ["default", "secondary", "outline", "destructive"],
+        compositionRules: [],
         notes:
           "Registry lookup for 'Badge' using item 'badge' failed. HTTP 404"
       }

@@ -1,13 +1,6 @@
-export const ALLOWED_UI_COMPONENT_TYPES = [
-  "Card",
-  "CardHeader",
-  "CardTitle",
-  "CardDescription",
-  "CardContent",
-  "Button",
-  "Badge",
-  "Text"
-] as const;
+import { ALLOWED_COMPONENT_TYPES } from "@repo/component-catalog";
+
+export const ALLOWED_UI_COMPONENT_TYPES = ALLOWED_COMPONENT_TYPES;
 
 export const UI_COMPONENT_NODE_JSON_SCHEMA: Record<string, unknown> = {
   $schema: "https://json-schema.org/draft/2020-12/schema",

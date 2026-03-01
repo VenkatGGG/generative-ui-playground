@@ -27,12 +27,13 @@ function sanitizeComponentRules(
   requested: string[]
 ): MCPComponentContext["componentRules"] {
   if (!Array.isArray(value)) {
-    return requested.map((name) => ({
-      name,
-      allowedProps: [],
-      variants: [],
-      notes: "No MCP rule details returned by server."
-    }));
+      return requested.map((name) => ({
+        name,
+        allowedProps: [],
+        variants: [],
+        compositionRules: [],
+        notes: "No MCP rule details returned by server."
+      }));
   }
 
   const rules = value
@@ -45,6 +46,7 @@ function sanitizeComponentRules(
         name?: unknown;
         allowedProps?: unknown;
         variants?: unknown;
+        compositionRules?: unknown;
         notes?: unknown;
       };
 
@@ -56,6 +58,7 @@ function sanitizeComponentRules(
         name: record.name,
         allowedProps: sanitizeStringArray(record.allowedProps),
         variants: sanitizeStringArray(record.variants),
+        compositionRules: sanitizeStringArray(record.compositionRules),
         notes: typeof record.notes === "string" ? record.notes : ""
       };
     })
@@ -69,6 +72,7 @@ function sanitizeComponentRules(
     name,
     allowedProps: [],
     variants: [],
+    compositionRules: [],
     notes: "No MCP rule details returned by server."
   }));
 }

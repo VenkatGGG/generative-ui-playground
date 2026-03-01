@@ -1,63 +1,11 @@
 import type { UIComponentNode, UISpec } from "@repo/contracts";
 import type { ExtractComponentsResult, MCPComponentContext } from "@repo/integrations";
+import {
+  canonicalizeCatalogComponentType,
+  getAllowedComponentTypeSet
+} from "@repo/component-catalog";
 
-const SUPPORTED_COMPONENT_TYPES = [
-  "Text",
-  "Card",
-  "CardHeader",
-  "CardTitle",
-  "CardDescription",
-  "CardContent",
-  "Button",
-  "Badge"
-] as const;
-
-const SUPPORTED_COMPONENT_SET = new Set<string>(SUPPORTED_COMPONENT_TYPES);
-const SUPPORTED_COMPONENT_BY_LOWER = new Map(
-  SUPPORTED_COMPONENT_TYPES.map((type) => [type.toLowerCase(), type])
-);
-
-const TYPE_ALIASES: Record<string, string> = {
-  pricingcard: "Card",
-  heading: "CardTitle",
-  title: "CardTitle",
-  header: "CardTitle",
-  h1: "CardTitle",
-  h2: "CardTitle",
-  h3: "CardTitle",
-  h4: "CardTitle",
-  h5: "CardTitle",
-  h6: "CardTitle",
-  subheading: "CardDescription",
-  subtitle: "CardDescription",
-  description: "CardDescription",
-  paragraph: "Text",
-  label: "Text",
-  pricedisplay: "Text",
-  listitem: "Text",
-  p: "Text",
-  span: "Text",
-  body: "Text",
-  caption: "Text",
-  list: "CardContent",
-  stack: "CardContent",
-  box: "CardContent",
-  container: "CardContent",
-  section: "CardContent",
-  wrapper: "CardContent",
-  div: "CardContent",
-  content: "CardContent",
-  main: "CardContent",
-  flex: "CardContent",
-  grid: "CardContent",
-  row: "CardContent",
-  column: "CardContent",
-  footer: "CardContent",
-  ctabutton: "Button",
-  link: "Button",
-  anchor: "Button",
-  a: "Button"
-};
+const SUPPORTED_COMPONENT_SET = getAllowedComponentTypeSet();
 
 const COMPLEX_PROMPT_HINT = /\b(pricing|landing|checkout|dashboard|hero|feature|section|form)\b/i;
 const SIMPLE_PROMPT_HINT = /\b(simple|minimal|minimalist|minimalistic|single|basic|plain|tiny|compact|just)\b/i;
@@ -138,13 +86,7 @@ function extractExactTokensFromNotes(context: MCPComponentContext): string[] {
 }
 
 export function canonicalizeComponentType(type: string): string {
-  const normalized = type.trim();
-  const supported = SUPPORTED_COMPONENT_BY_LOWER.get(normalized.toLowerCase());
-  if (supported) {
-    return supported;
-  }
-
-  return TYPE_ALIASES[normalized.toLowerCase()] ?? normalized;
+  return canonicalizeCatalogComponentType(type);
 }
 
 export function canonicalizeNodeTypes(node: UIComponentNode): UIComponentNode {
@@ -186,12 +128,12 @@ export function buildConstraintSet(input: BuildConstraintInput): ConstraintSet {
     new Set([...extractQuotedTokens(prompt), ...extractExactTokensFromNotes(input.mcpContext)])
   );
 
-  const tokenDrivenMinimum = Math.min(12, requiredTextTokens.length + 2);
+  const tokenDrivenMinimum = Math.min(8, requiredTextTokens.length + 1);
   const complexityFloor = COMPLEX_PROMPT_HINT.test(prompt)
-    ? 10
+    ? 7
     : SIMPLE_PROMPT_HINT.test(prompt)
-      ? 3
-      : 5;
+      ? 2
+      : 4;
   const minElementCount =
     input.pass1.intentType === "new" ? Math.max(tokenDrivenMinimum, complexityFloor) : 1;
 

@@ -3,9 +3,14 @@ import type {
   GenerationModelAdapter,
   StreamDesignInput
 } from "../interfaces";
+import {
+  ALLOWED_COMPONENT_TYPES,
+  PASS2_EXAMPLE_TREE,
+  buildPass2CatalogSection
+} from "@repo/component-catalog";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
+import { buildComponentContextPromptSection } from "../shared/component-context-prompt";
 import { parseSseData } from "../shared/sse";
-import { ALLOWED_UI_COMPONENT_TYPES } from "../shared/ui-schema";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
@@ -32,62 +37,13 @@ interface GeminiGenerateRequest {
   };
 }
 
-const PASS2_EXAMPLE_TREE = {
-  id: "root",
-  type: "Card",
-  props: {
-    className: "w-full max-w-md border shadow-sm rounded-xl"
-  },
-  children: [
-    {
-      id: "header",
-      type: "CardHeader",
-      children: [
-        {
-          id: "title",
-          type: "CardTitle",
-          children: ["Pro Plan"]
-        },
-        {
-          id: "description",
-          type: "CardDescription",
-          children: ["Perfect for startups and small teams."]
-        }
-      ]
-    },
-    {
-      id: "content",
-      type: "CardContent",
-      children: [
-        {
-          id: "price",
-          type: "Text",
-          children: ["$29/mo"]
-        },
-        {
-          id: "badge",
-          type: "Badge",
-          props: { variant: "secondary" },
-          children: ["Popular"]
-        },
-        {
-          id: "cta",
-          type: "Button",
-          props: { variant: "default", size: "default" },
-          children: ["Start Free Trial"]
-        }
-      ]
-    }
-  ]
-} as const;
-
 function createGeminiNodeSchema(depth: number): Record<string, unknown> {
   const schema: Record<string, unknown> = {
     type: "OBJECT",
     required: ["id", "type"],
     properties: {
       id: { type: "STRING" },
-      type: { type: "STRING", enum: [...ALLOWED_UI_COMPONENT_TYPES] },
+      type: { type: "STRING", enum: [...ALLOWED_COMPONENT_TYPES] },
       props: { type: "OBJECT" }
     }
   };
@@ -128,16 +84,16 @@ function toPass1Prompt(input: ExtractComponentsInput): string {
 
 function toPass2Prompt(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
-  const context = JSON.stringify(input.componentContext);
-  const allowedTypes = ALLOWED_UI_COMPONENT_TYPES.join(", ");
+  const contextSection = buildComponentContextPromptSection(input.componentContext);
   const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
+  const catalogSection = buildPass2CatalogSection();
 
   return [
     "You generate rich UI tree snapshots for a React renderer.",
     "Output newline-delimited JSON objects only.",
     "Each line must be one complete UIComponentNode object with id,type,props?,children?.",
     "No markdown, no explanations.",
-    `Allowed component types ONLY: ${allowedTypes}. Do not invent other types.`,
+    catalogSection,
     "Composition rules:",
     "- Card must contain CardHeader with CardTitle and optional CardDescription.",
     "- Card must contain CardContent for the body/actions.",
@@ -146,9 +102,9 @@ function toPass2Prompt(input: StreamDesignInput): string {
     "Generate visually complete output with meaningful copy and spacing cues, not skeletal placeholders.",
     "Reference example of a valid complete snapshot:",
     example,
+    contextSection,
     `Prompt: ${input.prompt}`,
-    `PreviousSpec: ${previousSpec}`,
-    `ComponentContext: ${context}`
+    `PreviousSpec: ${previousSpec}`
   ].join("\n");
 }
 

@@ -12,6 +12,7 @@ describe("createMcpHttpAdapter", () => {
               name: "Card",
               allowedProps: ["className", "variant"],
               variants: ["default", "outline"],
+              compositionRules: ["Include CardHeader and CardContent"],
               notes: "Card layout rules"
             }
           ]
@@ -40,6 +41,7 @@ describe("createMcpHttpAdapter", () => {
         name: "Card",
         allowedProps: ["className", "variant"],
         variants: ["default", "outline"],
+        compositionRules: ["Include CardHeader and CardContent"],
         notes: "Card layout rules"
       }
     ]);
