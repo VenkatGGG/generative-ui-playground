@@ -41,6 +41,28 @@ function readEnv(name: string): string {
   return value;
 }
 
+function resolveGeminiPass2MaxOutputTokens(): number {
+  const raw = process.env.GEMINI_PASS2_MAX_OUTPUT_TOKENS;
+  if (!raw) {
+    return 2048;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 2048;
+  }
+
+  return parsed;
+}
+
+function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" {
+  const raw = process.env.GEMINI_PASS2_THINKING_LEVEL?.toUpperCase();
+  if (raw === "MEDIUM" || raw === "HIGH") {
+    return raw;
+  }
+  return "LOW";
+}
+
 async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
   const mongoUri = readEnv("MONGODB_URI");
   const mongoDbName = readEnv("MONGODB_DB_NAME");
@@ -63,7 +85,9 @@ async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
             apiKey: readEnv("GEMINI_API_KEY"),
             baseUrl: process.env.GEMINI_BASE_URL,
             pass1Model: process.env.GEMINI_PASS1_MODEL,
-            pass2Model: process.env.GEMINI_PASS2_MODEL
+            pass2Model: process.env.GEMINI_PASS2_MODEL,
+            pass2MaxOutputTokens: resolveGeminiPass2MaxOutputTokens(),
+            pass2ThinkingLevel: resolveGeminiPass2ThinkingLevel()
           }
         };
 

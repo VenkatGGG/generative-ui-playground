@@ -24,11 +24,14 @@ const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
 const DEFAULT_PASS2_MODEL = "gemini-2.5-pro";
 
 type FetchLike = typeof fetch;
+export type GeminiThinkingLevel = "LOW" | "MEDIUM" | "HIGH";
 
 export interface GeminiGenerationModelOptions {
   apiKey: string;
   pass1Model?: string;
   pass2Model?: string;
+  pass2MaxOutputTokens?: number;
+  pass2ThinkingLevel?: GeminiThinkingLevel;
   baseUrl?: string;
   fetchImpl?: FetchLike;
 }
@@ -41,6 +44,10 @@ interface GeminiGenerateRequest {
   generationConfig?: {
     responseMimeType?: string;
     responseSchema?: Record<string, unknown>;
+    maxOutputTokens?: number;
+    thinkingConfig?: {
+      thinkingLevel?: GeminiThinkingLevel;
+    };
   };
 }
 
@@ -271,7 +278,11 @@ function toPass2PromptV2(input: StreamDesignInput): string {
   ].join("\n");
 }
 
-function toRequest(prompt: string, responseSchema?: Record<string, unknown>): GeminiGenerateRequest {
+function toRequest(
+  prompt: string,
+  responseSchema?: Record<string, unknown>,
+  pass2Config?: { maxOutputTokens: number; thinkingLevel: GeminiThinkingLevel }
+): GeminiGenerateRequest {
   return {
     contents: [
       {
@@ -281,7 +292,15 @@ function toRequest(prompt: string, responseSchema?: Record<string, unknown>): Ge
     ],
     generationConfig: {
       responseMimeType: "application/json",
-      ...(responseSchema ? { responseSchema } : {})
+      ...(responseSchema
+        ? {
+            responseSchema,
+            maxOutputTokens: pass2Config?.maxOutputTokens,
+            thinkingConfig: {
+              thinkingLevel: pass2Config?.thinkingLevel
+            }
+          }
+        : {})
     }
   };
 }
@@ -405,6 +424,12 @@ export function createGeminiGenerationModel(
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const pass1Model = options.pass1Model ?? DEFAULT_PASS1_MODEL;
   const pass2Model = options.pass2Model ?? DEFAULT_PASS2_MODEL;
+  const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? 2048;
+  const pass2ThinkingLevel = options.pass2ThinkingLevel ?? "LOW";
+  const pass2Config = {
+    maxOutputTokens: pass2MaxOutputTokens,
+    thinkingLevel: pass2ThinkingLevel
+  };
 
   return {
     async extractComponents(input) {
@@ -418,7 +443,7 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA)
+        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA, pass2Config)
       );
     },
     streamDesignV2(input) {
@@ -426,7 +451,7 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA)
+        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA, pass2Config)
       );
     }
   };

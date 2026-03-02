@@ -65,10 +65,16 @@ describe("createGeminiGenerationModel", () => {
 
     const fetchImpl: typeof fetch = async (_input, init) => {
       const body = JSON.parse(String(init?.body)) as {
-        generationConfig?: { responseSchema?: unknown };
+        generationConfig?: {
+          responseSchema?: unknown;
+          maxOutputTokens?: number;
+          thinkingConfig?: { thinkingLevel?: string };
+        };
       };
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
+      expect(body.generationConfig?.maxOutputTokens).toBe(2048);
+      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$schema");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$ref");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$defs");
@@ -113,11 +119,17 @@ describe("createGeminiGenerationModel", () => {
 
     const fetchImpl: typeof fetch = async (_input, init) => {
       const body = JSON.parse(String(init?.body)) as {
-        generationConfig?: { responseSchema?: unknown };
+        generationConfig?: {
+          responseSchema?: unknown;
+          maxOutputTokens?: number;
+          thinkingConfig?: { thinkingLevel?: string };
+        };
         contents?: Array<{ parts?: Array<{ text?: string }> }>;
       };
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
+      expect(body.generationConfig?.maxOutputTokens).toBe(2048);
+      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
       expect(prompt).toContain("SEMANTIC CONTRACT");
       expect(prompt).toContain("PROMPT PACK:");
@@ -157,5 +169,54 @@ describe("createGeminiGenerationModel", () => {
 
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toContain('"tree"');
+  });
+
+  it("applies custom pass2 output and thinking controls", async () => {
+    const ssePayload = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"{\\"state\\":{},\\"tree\\":{\\"id\\":\\"root\\",\\"type\\":\\"Card\\"}}\\n"}]}}]}',
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n");
+
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        generationConfig?: {
+          maxOutputTokens?: number;
+          thinkingConfig?: { thinkingLevel?: string };
+        };
+      };
+
+      expect(body.generationConfig?.maxOutputTokens).toBe(3072);
+      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("MEDIUM");
+
+      return new Response(ssePayload, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      });
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      pass2MaxOutputTokens: 3072,
+      pass2ThinkingLevel: "MEDIUM",
+      fetchImpl
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of adapter.streamDesignV2!({
+      prompt: "build a dynamic pricing form",
+      previousSpec: null,
+      componentContext: {
+        contextVersion: "ctx-v2",
+        componentRules: []
+      }
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(1);
   });
 });
