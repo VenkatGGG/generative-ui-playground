@@ -8,7 +8,7 @@ import {
 
 type FetchLike = typeof fetch;
 
-const DEFAULT_ITEM_URL_TEMPLATE = "https://ui.shadcn.com/r/{name}.json";
+const DEFAULT_ITEM_URL_TEMPLATE = "https://ui.shadcn.com/r/styles/new-york/{name}.json";
 const DEFAULT_CONTEXT_VERSION = "shadcn-registry-v1";
 const CATALOG_RULES = new Map<string, readonly string[]>(
   COMPONENT_CATALOG.map((entry) => [entry.type, entry.compositionRules ?? []] as const)
@@ -155,11 +155,11 @@ function buildRuleNotes(
   }
 
   if (errorMessage) {
-    return `Registry lookup for '${componentName}' using item '${itemName}' failed. ${errorMessage}`;
+    return "Registry item unavailable; follow catalog contract for this component.";
   }
 
   if (!payload) {
-    return `Registry lookup for '${componentName}' using item '${itemName}' returned no payload.`;
+    return "Registry item unavailable; follow catalog contract for this component.";
   }
 
   const segments: string[] = [`Registry item: ${itemName}.`, `Source: ${url}.`];

@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createShadcnRegistryAdapter } from "./shadcn-registry";
 
 describe("createShadcnRegistryAdapter", () => {
-  it("fetches shadcn registry items and maps them back to requested components", async () => {
+  it("uses the default shadcn item template and maps registry items to requested components", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
 
-      if (url.endsWith("/card.json")) {
+      if (url.endsWith("/styles/new-york/card.json")) {
         return new Response(
           JSON.stringify({
             name: "card",
@@ -25,7 +25,7 @@ describe("createShadcnRegistryAdapter", () => {
         );
       }
 
-      if (url.endsWith("/button.json")) {
+      if (url.endsWith("/styles/new-york/button.json")) {
         return new Response(
           JSON.stringify({
             name: "button",
@@ -39,14 +39,19 @@ describe("createShadcnRegistryAdapter", () => {
       return new Response("not found", { status: 404 });
     });
 
-    const adapter = createShadcnRegistryAdapter({
-      itemUrlTemplate: "https://ui.shadcn.com/r/{name}.json",
-      fetchImpl
-    });
+    const adapter = createShadcnRegistryAdapter({ fetchImpl });
 
     const context = await adapter.fetchContext(["Card", "CardHeader", "Button", "Text"]);
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://ui.shadcn.com/r/styles/new-york/card.json",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://ui.shadcn.com/r/styles/new-york/button.json",
+      expect.objectContaining({ method: "GET" })
+    );
     expect(context.contextVersion).toBe("shadcn-registry-v1");
     expect(context.componentRules).toHaveLength(4);
 
@@ -68,10 +73,7 @@ describe("createShadcnRegistryAdapter", () => {
   it("falls back to note-only rules when registry item fetch fails", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => new Response("not found", { status: 404 }));
 
-    const adapter = createShadcnRegistryAdapter({
-      itemUrlTemplate: "https://ui.shadcn.com/r/{name}.json",
-      fetchImpl
-    });
+    const adapter = createShadcnRegistryAdapter({ fetchImpl });
 
     const context = await adapter.fetchContext(["Badge"]);
 
@@ -85,8 +87,7 @@ describe("createShadcnRegistryAdapter", () => {
         bindingHints: [
           "Use {\"$state\":\"/path\"}, {\"$item\":\"field\"}, or {\"$index\":true} for dynamic content."
         ],
-        notes:
-          "Registry lookup for 'Badge' using item 'badge' failed. HTTP 404"
+        notes: "Registry item unavailable; follow catalog contract for this component."
       }
     ]);
   });
