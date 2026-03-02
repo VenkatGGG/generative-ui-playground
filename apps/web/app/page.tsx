@@ -5,7 +5,7 @@ import {
   type GenerationStateV2,
   StreamGenerateErrorV2,
   useUIStreamV2
-} from "@repo/client-core";
+} from "@repo/client-core/client";
 import type { ThreadBundleV2, UISpecV2, VersionRecordV2 } from "@repo/contracts";
 import {
   DynamicRendererV2,

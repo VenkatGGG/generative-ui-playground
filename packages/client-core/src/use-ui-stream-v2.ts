@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { StreamEventV2, UISpecV2 } from "@repo/contracts";
 import { streamGenerateV2, StreamGenerateErrorV2 } from "./stream-v2";

@@ -34,6 +34,9 @@
       ],
       "@client-core/*": [
         "../../packages/client-core/src/*"
+      ],
+      "@repo/client-core/client": [
+        "../../packages/client-core/src/client.ts"
       ]
     },
     "allowJs": true,
