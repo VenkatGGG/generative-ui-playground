@@ -137,3 +137,22 @@ type StreamEventV2 =
   | { type: "done"; generationId: string; versionId: string; specHash: string }
   | { type: "error"; generationId: string; code: string; message: string };
 ```
+
+### v2 Pass2 Contract
+
+For each model attempt, pass2 is instructed to output exactly one JSON object:
+
+```ts
+{ state?: Record<string, unknown>; tree: UIComponentNodeV2 }
+```
+
+Multiple root JSON objects in one response are invalid for v2 and can trigger retry/fallback behavior.
+
+### v2 Warning and Error Notes
+
+- `V2_SPARSE_OUTPUT`: candidate tree is valid JSON but too structurally thin.
+- `V2_CARD_STRUCTURE_MISSING`: card intent/spec missing required card sub-structure.
+- `V2_REQUIRED_COMPONENT_MISSING`: intent requires components that are absent (for example form controls).
+- `V2_NO_STRUCTURAL_PROGRESS`: retries produced equivalent sparse structure.
+- `PASS2_STREAM_FAILED`: upstream model stream failure (including transient provider unavailability).
+- `FALLBACK_APPLIED`: retry budget exhausted; deterministic fallback output was emitted.

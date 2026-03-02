@@ -48,11 +48,35 @@ When `ADAPTER_MODE=real`, required env vars are:
 - Gemini: `GEMINI_API_KEY` (+ optional `GEMINI_BASE_URL`, `GEMINI_PASS1_MODEL`, `GEMINI_PASS2_MODEL`)
 - OpenAI: `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`, `OPENAI_PASS1_MODEL`, `OPENAI_PASS2_MODEL`)
 
+Gemini pass2 tuning (optional):
+
+- `GEMINI_PASS2_MAX_OUTPUT_TOKENS` (default `2048`)
+- `GEMINI_PASS2_THINKING_LEVEL` (default `LOW`, allowed `LOW|MEDIUM|HIGH`)
+
 Context provider in `real` mode:
 
-- Default: direct shadcn registry adapter using `https://ui.shadcn.com/r/{name}.json`.
+- Default: direct shadcn registry adapter using `https://ui.shadcn.com/r/styles/new-york/{name}.json`.
 - Optional override template: `SHADCN_REGISTRY_URL_TEMPLATE`.
 - Optional HTTP adapter override: set `MCP_ENDPOINT` (and optional `MCP_API_KEY`) to use an external context service.
+
+## v2 Pass2 Contract
+
+For `v2` generation, pass2 must return exactly one structured JSON snapshot per attempt:
+
+- Shape: `{ state?: object, tree: UIComponentNodeV2 }`
+- Multiple root JSON objects are invalid and treated as malformed output.
+
+## Troubleshooting (Real Mode)
+
+- `V2_SPARSE_OUTPUT`:
+  - Model returned a syntactically valid but structurally thin tree.
+  - Backend retries with structural feedback; repeated failures can end in fallback.
+- `PASS2_STREAM_FAILED`:
+  - Upstream provider stream failed (for example temporary `503/UNAVAILABLE`).
+  - Request may retry internally; if retries exhaust, stream ends with `error`.
+- `FALLBACK_APPLIED`:
+  - Emitted when no valid candidate passes validation/constraints within retry budget.
+  - Indicates deterministic fallback spec was persisted for the generation.
 
 ## Verification
 

@@ -11,7 +11,7 @@
 2. Orchestrator loads base version from persistence.
 3. Pass 1 extracts component names.
 4. MCP adapter fetches context only for those components.
-5. Pass 2 streams desired end-state JSON snapshots.
+5. Pass 2 requests one structured JSON snapshot per attempt (`{ state?: object, tree: UIComponentNodeV2 }` in v2).
 6. Backend normalizes + validates each candidate.
 7. Backend computes RFC6902 patches from canonical -> candidate.
 8. Backend streams SSE JSONL patch/status events.
@@ -37,11 +37,30 @@
 
 - Backend is the source of truth for patch math.
 - Client never trusts model patch generation.
+- v2 pass2 prompt/schema contract is single-snapshot aligned (no NDJSON contract).
 - Registry is strict and unknown types fall back safely.
 - Error boundaries isolate rendering crashes.
 - Iterative refinement uses version lineage, not mutable state rewrites.
 - Failure paths are logged for analytics without mutating successful version lineage.
 - Generation logs persist timing via `durationMs` alongside warning/patch/error metadata.
+
+## Real-Mode Quality Controls
+
+- Gemini pass2 output budget and thinking level are configurable:
+  - `GEMINI_PASS2_MAX_OUTPUT_TOKENS` (default `2048`)
+  - `GEMINI_PASS2_THINKING_LEVEL` (default `LOW`)
+- Direct shadcn registry default template:
+  - `https://ui.shadcn.com/r/styles/new-york/{name}.json`
+- On registry misses, MCP context injects concise fallback guidance only (not raw HTTP transport errors).
+
+## Sparse Output Handling
+
+- Structural validators reject semantically thin but syntactically valid candidates.
+- Warnings include deterministic codes such as:
+  - `V2_CARD_STRUCTURE_MISSING`
+  - `V2_REQUIRED_COMPONENT_MISSING`
+  - `V2_NO_STRUCTURAL_PROGRESS`
+- If retries exhaust, orchestrator emits `FALLBACK_APPLIED` and persists deterministic fallback output.
 
 ## Module Responsibilities
 
