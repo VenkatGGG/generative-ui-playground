@@ -235,7 +235,16 @@ function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
       props: { type: "OBJECT" },
       slots: { type: "OBJECT" },
       visible: {
-        anyOf: [{ type: "BOOLEAN" }, { type: "OBJECT" }, { type: "ARRAY" }]
+        anyOf: [
+          { type: "BOOLEAN" },
+          { type: "OBJECT" },
+          {
+            type: "ARRAY",
+            items: {
+              anyOf: [{ type: "BOOLEAN" }, { type: "OBJECT" }]
+            }
+          }
+        ]
       },
       repeat: {
         type: "OBJECT",

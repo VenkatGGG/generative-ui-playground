@@ -131,9 +131,14 @@ describe("createGeminiGenerationModel", () => {
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
       expect(body.generationConfig?.thinkingConfig).toBeUndefined();
       const responseSchema = body.generationConfig?.responseSchema as
-        | { properties?: { tree?: { required?: string[] } } }
+        | { properties?: { tree?: { required?: string[]; properties?: Record<string, unknown> } } }
         | undefined;
       expect(responseSchema?.properties?.tree?.required).toContain("children");
+      const visible = responseSchema?.properties?.tree?.properties?.visible as
+        | { anyOf?: Array<Record<string, unknown>> }
+        | undefined;
+      const visibleArrayArm = visible?.anyOf?.find((entry) => entry.type === "ARRAY");
+      expect(visibleArrayArm?.items).toBeDefined();
       const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
       expect(prompt).toContain("SEMANTIC CONTRACT");
       expect(prompt).toContain("PROMPT PACK:");

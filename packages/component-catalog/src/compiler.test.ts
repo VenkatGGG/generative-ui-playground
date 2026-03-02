@@ -35,6 +35,9 @@ describe("component-catalog compiler", () => {
     };
     const tree = schema.properties?.tree as { properties?: Record<string, unknown> };
     expect(tree.properties?.children).toBeDefined();
+    const visible = tree.properties?.visible as { anyOf?: Array<Record<string, unknown>> };
+    const visibleArrayArm = visible?.anyOf?.find((entry) => entry.type === "ARRAY");
+    expect(visibleArrayArm?.items).toBeDefined();
 
     const example = compilePass2ExampleSnapshotV2();
     expect(example.tree).toBeDefined();
