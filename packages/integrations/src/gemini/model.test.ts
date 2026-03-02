@@ -130,6 +130,10 @@ describe("createGeminiGenerationModel", () => {
       expect(body.generationConfig?.responseSchema).toBeDefined();
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
       expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
+      const responseSchema = body.generationConfig?.responseSchema as
+        | { properties?: { tree?: { required?: string[] } } }
+        | undefined;
+      expect(responseSchema?.properties?.tree?.required).toContain("children");
       const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
       expect(prompt).toContain("SEMANTIC CONTRACT");
       expect(prompt).toContain("PROMPT PACK:");

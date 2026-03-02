@@ -152,7 +152,7 @@ function createGeminiVisibilitySchema(depth: number): Record<string, unknown> {
 function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
   const schema: Record<string, unknown> = {
     type: "OBJECT",
-    required: ["id", "type"],
+    required: ["id", "type", "children"],
     properties: {
       id: { type: "STRING" },
       type: { type: "STRING", enum: [...ALLOWED_COMPONENT_TYPES_V2] },

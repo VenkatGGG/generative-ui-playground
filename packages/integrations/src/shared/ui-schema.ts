@@ -120,7 +120,7 @@ export const UI_TREE_SNAPSHOT_V2_JSON_SCHEMA: Record<string, unknown> = {
     UIComponentNodeV2: {
       type: "object",
       additionalProperties: false,
-      required: ["id", "type"],
+      required: ["id", "type", "children"],
       properties: {
         id: { type: "string", minLength: 1 },
         type: {
