@@ -53,6 +53,16 @@ describe("runtime-v2", () => {
     ).toBe(true);
   });
 
+  it("treats null or malformed visibility conditions as visible (fail-open)", () => {
+    const state = {
+      form: { valid: true }
+    };
+
+    expect(evaluateVisibilityV2(null, { state })).toBe(true);
+    expect(evaluateVisibilityV2({ $and: null } as unknown as never, { state })).toBe(true);
+    expect(evaluateVisibilityV2({ $or: "bad" } as unknown as never, { state })).toBe(true);
+  });
+
   it("expands repeat scopes from state arrays", () => {
     const scopes = expandRepeatScopesV2(
       {

@@ -155,22 +155,29 @@ function compareVisibilityValues(left: unknown, condition: VisibilityConditionV2
 }
 
 export function evaluateVisibilityV2(
-  condition: VisibilityConditionV2 | undefined,
+  condition: VisibilityConditionV2 | undefined | null,
   context: RuntimeResolveContextV2
 ): boolean {
-  if (condition === undefined) {
+  if (condition === undefined || condition === null) {
     return true;
   }
   if (typeof condition === "boolean") {
     return condition;
   }
+  if (typeof condition !== "object" || Array.isArray(condition)) {
+    return true;
+  }
 
   if ("$and" in condition) {
-    return condition.$and.every((entry) => evaluateVisibilityV2(entry, context));
+    return Array.isArray(condition.$and)
+      ? condition.$and.every((entry) => evaluateVisibilityV2(entry, context))
+      : true;
   }
 
   if ("$or" in condition) {
-    return condition.$or.some((entry) => evaluateVisibilityV2(entry, context));
+    return Array.isArray(condition.$or)
+      ? condition.$or.some((entry) => evaluateVisibilityV2(entry, context))
+      : true;
   }
 
   const value = getValueAtStatePath(context.state, condition.$state);
