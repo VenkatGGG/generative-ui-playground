@@ -194,12 +194,20 @@ function createDeps(): {
             {
               id: "header",
               type: "CardHeader",
-              children: [{ id: "title", type: "CardTitle", children: ["Plan"] }]
+              children: [
+                { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+                { id: "desc", type: "CardDescription", children: ["For fast-growing teams"] }
+              ]
             },
             {
               id: "content",
               type: "CardContent",
               children: [
+                {
+                  id: "price",
+                  type: "Text",
+                  children: ["$29/mo"]
+                },
                 {
                   id: "rows",
                   type: "Stack",
@@ -217,6 +225,12 @@ function createDeps(): {
                   id: "cta",
                   type: "Button",
                   children: ["Continue"]
+                },
+                {
+                  id: "secondary",
+                  type: "Button",
+                  props: { variant: "outline" },
+                  children: ["View Docs"]
                 }
               ]
             }
@@ -247,8 +261,9 @@ function createDeps(): {
 }
 
 describe("runGenerationV2", () => {
-  it("emits semantic lifecycle events and usage metadata", async () => {
+  it("emits semantic lifecycle events and usage metadata without fallback on rich snapshots", async () => {
     const events = [] as string[];
+    const warningCodes: string[] = [];
     for await (const event of runGenerationV2(
       {
         threadId: "thread-v2",
@@ -258,12 +273,16 @@ describe("runGenerationV2", () => {
       createDeps()
     )) {
       events.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
     }
 
     expect(events).toContain("status");
     expect(events).toContain("patch");
     expect(events).toContain("usage");
     expect(events).toContain("done");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
   });
 
   it("returns base version conflict for stale v2 ids", async () => {
@@ -367,7 +386,53 @@ describe("runGenerationV2", () => {
     expect(callCount).toBe(2);
     expect(prompts[1]).toContain("Retry attempt 2");
     expect(prompts[1]).toContain("V2_SPARSE_OUTPUT");
+    expect(prompts[1]).toContain("V2_CARD_STRUCTURE_MISSING");
+    expect(warningCodes).toContain("V2_CARD_STRUCTURE_MISSING");
     expect(warningCodes).toContain("CONSTRAINT_RETRY");
     expect(eventTypes).toContain("done");
+  });
+
+  it("emits no-structural-progress warning for repeated sparse candidates and falls back", async () => {
+    const deps = createDeps();
+    let callCount = 0;
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        callCount += 1;
+        yield JSON.stringify({
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "title",
+                type: "CardTitle",
+                children: ["Tiny"]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a pricing card with title, price, features and CTAs",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(callCount).toBe(3);
+    expect(warningCodes).toContain("V2_CARD_STRUCTURE_MISSING");
+    expect(warningCodes).toContain("V2_NO_STRUCTURAL_PROGRESS");
+    expect(warningCodes).toContain("FALLBACK_APPLIED");
   });
 });

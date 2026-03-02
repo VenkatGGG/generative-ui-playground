@@ -16,6 +16,7 @@ import {
 } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
+import { buildConstraintSetV2, validateConstraintSetV2 } from "./constraints-v2";
 
 export interface OrchestratorDepsV2 {
   model: GenerationModelAdapter;
@@ -35,6 +36,21 @@ function tokenEstimate(input: string): number {
     return 0;
   }
   return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+function buildStructuralSignature(spec: UISpecV2): string {
+  const normalized = Object.entries(spec.elements)
+    .map(([id, element]) => ({
+      id,
+      type: element.type,
+      children: [...element.children]
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  return JSON.stringify({
+    root: spec.root,
+    elements: normalized
+  });
 }
 
 function parseCandidateSnapshotV2(input: string): UITreeSnapshotV2 | null {
@@ -213,10 +229,15 @@ export async function* runGenerationV2(
       },
       true
     );
+    const constraintSet = buildConstraintSetV2({
+      prompt: request.prompt,
+      pass1
+    });
 
     let acceptedCandidate = false;
     let sawAnyCandidate = false;
     let lastValidationIssues: Array<{ code: string; message: string }> = [];
+    const rejectedSignatures = new Set<string>();
 
     for (let attempt = 1; attempt <= MAX_PASS2_ATTEMPTS; attempt += 1) {
       yield {
@@ -266,6 +287,10 @@ export async function* runGenerationV2(
             const semanticIssues = validation.valid
               ? []
               : validation.issues.map((issue) => ({ code: issue.code, message: issue.message }));
+            const structuralIssues = validateConstraintSetV2(candidateSpec, constraintSet).map((issue) => ({
+              code: issue.code,
+              message: issue.message
+            }));
             const sparseIssues =
               Object.keys(candidateSpec.elements).length < minimumElementFloor
                 ? [
@@ -275,7 +300,18 @@ export async function* runGenerationV2(
                     }
                   ]
                 : [];
-            const allIssues = [...semanticIssues, ...sparseIssues];
+            const allIssues = [...semanticIssues, ...structuralIssues, ...sparseIssues];
+
+            if (allIssues.length > 0) {
+              const signature = buildStructuralSignature(candidateSpec);
+              if (rejectedSignatures.has(signature)) {
+                allIssues.push({
+                  code: "V2_NO_STRUCTURAL_PROGRESS",
+                  message: "Candidate structure repeated without meaningful progress across retries."
+                });
+              }
+              rejectedSignatures.add(signature);
+            }
 
             if (allIssues.length > 0) {
               lastValidationIssues = allIssues;
