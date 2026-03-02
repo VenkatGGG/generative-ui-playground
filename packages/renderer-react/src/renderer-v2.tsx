@@ -343,7 +343,22 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         return <Fallback key={`${elementId}${keySuffix ?? ""}`} type="MISSING_ELEMENT" elementId={elementId} />;
       }
 
-      if (!evaluateVisibilityV2(element.visible, { state, scope })) {
+      let shouldRender = true;
+      try {
+        shouldRender = evaluateVisibilityV2(element.visible, { state, scope });
+      } catch (error) {
+        warn({
+          code: "V2_VISIBILITY_EVALUATION_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Visibility evaluation failed; rendering element as visible.",
+          elementId
+        });
+        shouldRender = true;
+      }
+
+      if (!shouldRender) {
         return null;
       }
 

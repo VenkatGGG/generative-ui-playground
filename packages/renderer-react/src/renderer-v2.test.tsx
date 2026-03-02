@@ -88,4 +88,38 @@ describe("DynamicRendererV2", () => {
 
     expect(html).not.toContain("Hidden text");
   });
+
+  it("does not crash on malformed visibility payloads", () => {
+    const spec: UISpecV2 = {
+      root: "root",
+      state: {},
+      elements: {
+        root: {
+          type: "Card",
+          props: {},
+          children: ["text"]
+        },
+        text: {
+          type: "Text",
+          props: {
+            text: "Visible despite malformed visibility"
+          },
+          visible: null as unknown as never,
+          children: []
+        }
+      }
+    };
+
+    const html = renderToStaticMarkup(
+      <DynamicRendererV2
+        spec={spec}
+        registry={{
+          Card: Card as never,
+          Text: Text as never
+        }}
+      />
+    );
+
+    expect(html).toContain("Visible despite malformed visibility");
+  });
 });

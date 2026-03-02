@@ -155,13 +155,21 @@ function RegistryBadge({ children, className, variant }: RegisteredComponentProp
 }
 
 function RegistryInput({ className, placeholder, type, value, onChange }: RegisteredComponentPropsV2) {
+  const resolvedOnChange = asChangeHandler(onChange);
+  const resolvedValue = asString(value);
   return (
     <Input
       className={asString(className)}
       placeholder={asString(placeholder)}
       type={asString(type)}
-      value={asString(value) ?? ""}
-      onChange={asChangeHandler(onChange)}
+      {...(resolvedOnChange
+        ? {
+            value: resolvedValue ?? "",
+            onChange: resolvedOnChange
+          }
+        : {
+            defaultValue: resolvedValue
+          })}
     />
   );
 }
@@ -173,13 +181,21 @@ function RegistryTextarea({
   rows,
   onChange
 }: RegisteredComponentPropsV2) {
+  const resolvedOnChange = asChangeHandler(onChange);
+  const resolvedValue = asString(value);
   return (
     <Textarea
       className={asString(className)}
       placeholder={asString(placeholder)}
-      value={asString(value) ?? ""}
       rows={asNumber(rows)}
-      onChange={asChangeHandler(onChange)}
+      {...(resolvedOnChange
+        ? {
+            value: resolvedValue ?? "",
+            onChange: resolvedOnChange
+          }
+        : {
+            defaultValue: resolvedValue
+          })}
     />
   );
 }
@@ -194,23 +210,39 @@ function RegistrySeparator({ className, orientation }: RegisteredComponentPropsV
 }
 
 function RegistryCheckbox({ className, checked, label, onChange }: RegisteredComponentPropsV2) {
+  const resolvedOnChange = asChangeHandler(onChange);
+  const resolvedChecked = asBoolean(checked);
   return (
     <Checkbox
       className={asString(className)}
-      checked={asBoolean(checked)}
       label={asString(label)}
-      onChange={asChangeHandler(onChange)}
+      {...(resolvedOnChange
+        ? {
+            checked: resolvedChecked ?? false,
+            onChange: resolvedOnChange
+          }
+        : {
+            defaultChecked: resolvedChecked
+          })}
     />
   );
 }
 
 function RegistrySelect({ className, options, value, onChange }: RegisteredComponentPropsV2) {
+  const resolvedOnChange = asChangeHandler(onChange);
+  const resolvedValue = asString(value);
   return (
     <Select
       className={asString(className)}
       options={asSelectOptions(options)}
-      value={asString(value)}
-      onChange={asChangeHandler(onChange)}
+      {...(resolvedOnChange
+        ? {
+            value: resolvedValue ?? "",
+            onChange: resolvedOnChange
+          }
+        : {
+            defaultValue: resolvedValue
+          })}
     />
   );
 }
