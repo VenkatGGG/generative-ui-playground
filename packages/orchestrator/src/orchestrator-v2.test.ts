@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { runGenerationV2 } from "./orchestrator-v2";
+import { PARITY_FIXTURES_V2 } from "./parity-fixtures-v2";
 
 function createDeps(): {
   model: GenerationModelAdapter;
@@ -261,6 +262,15 @@ function createDeps(): {
 }
 
 describe("runGenerationV2", () => {
+  it("defines parity fixtures for pricing, form, and dashboard baselines", () => {
+    expect(PARITY_FIXTURES_V2).toHaveLength(3);
+    expect(PARITY_FIXTURES_V2.map((fixture) => fixture.id)).toEqual([
+      "pricing",
+      "form",
+      "dashboard"
+    ]);
+  });
+
   it("emits semantic lifecycle events and usage metadata without fallback on rich snapshots", async () => {
     const events = [] as string[];
     const warningCodes: string[] = [];
@@ -434,5 +444,99 @@ describe("runGenerationV2", () => {
     expect(warningCodes).toContain("V2_CARD_STRUCTURE_MISSING");
     expect(warningCodes).toContain("V2_NO_STRUCTURAL_PROGRESS");
     expect(warningCodes).toContain("FALLBACK_APPLIED");
+  });
+
+  it("handles model-requested mcp tool calls and continues generation", async () => {
+    const deps = createDeps();
+    const fetchedComponents: string[][] = [];
+    let callCount = 0;
+
+    deps.mcp = {
+      async fetchContext(componentNames) {
+        fetchedComponents.push(componentNames);
+        return {
+          contextVersion: `ctx-${fetchedComponents.length}`,
+          componentRules: componentNames.map((name) => ({
+            name,
+            allowedProps: [],
+            variants: [],
+            compositionRules: [],
+            supportedEvents: [],
+            bindingHints: [],
+            notes: ""
+          }))
+        };
+      }
+    };
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        callCount += 1;
+        if (callCount === 1) {
+          yield JSON.stringify({
+            tool: "mcp.fetchContext",
+            components: ["Input", "Button"]
+          });
+          return;
+        }
+
+        yield JSON.stringify({
+          state: {
+            form: { email: "" }
+          },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Join"] },
+                  { id: "desc", type: "CardDescription", children: ["Stay updated with product launches."] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "email", type: "Input", props: { value: { $bindState: "/form/email" } }, children: [] },
+                  {
+                    id: "consent",
+                    type: "Checkbox",
+                    props: { label: "I agree to updates", checked: false },
+                    children: []
+                  },
+                  { id: "helper", type: "Text", children: ["No spam. Unsubscribe anytime."] },
+                  { id: "submit", type: "Button", children: ["Submit"] }
+                ]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a simple signup form",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(callCount).toBe(2);
+    expect(fetchedComponents.some((entry) => entry.includes("Input") && entry.includes("Button"))).toBe(true);
+    expect(warningCodes).toContain("V2_TOOL_CALL_EXECUTED");
+    expect(eventTypes).toContain("done");
   });
 });

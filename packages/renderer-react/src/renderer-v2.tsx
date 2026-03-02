@@ -446,11 +446,20 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         const children = element.children.map((childId) =>
           renderElement(childId, instanceScope, `${localKey ?? ""}_${childId}`)
         );
+        const slotProps: Record<string, ReactNode> = {};
+        if (element.slots) {
+          for (const [slotName, slotChildren] of Object.entries(element.slots)) {
+            slotProps[slotName] = slotChildren.map((childId) =>
+              renderElement(childId, instanceScope, `${localKey ?? ""}_${slotName}_${childId}`)
+            );
+          }
+        }
 
         const props = {
           elementId,
           element,
           ...resolvedProps,
+          ...slotProps,
           ...injectedHandlers,
           children
         };

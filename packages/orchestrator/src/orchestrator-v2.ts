@@ -7,7 +7,13 @@ import {
   type UISpecV2
 } from "@repo/contracts";
 import { getAllowedComponentTypeSetV2 } from "@repo/component-catalog";
-import { diffSpecs, normalizeTreeToSpecV2, validateSpecV2 } from "@repo/spec-engine";
+import {
+  autoFixStructuralSpecV2,
+  diffSpecs,
+  normalizeTreeToSpecV2,
+  validateSpecV2,
+  validateStructuralSpecV2
+} from "@repo/spec-engine";
 import {
   buildRetryPromptWithValidationFeedback,
   estimatePromptPackMinElements,
@@ -25,6 +31,11 @@ export interface OrchestratorDepsV2 {
 }
 
 const MAX_PASS2_ATTEMPTS = 3;
+
+interface ModelToolCall {
+  tool: "mcp.fetchContext";
+  components: string[];
+}
 
 function specHash(spec: UISpecV2): string {
   return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
@@ -77,6 +88,44 @@ function parseCandidateSnapshotV2(input: string): UITreeSnapshotV2 | null {
   } catch {
     return null;
   }
+}
+
+function parseModelToolCall(input: string): ModelToolCall | null {
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const tool = (parsed as { tool?: unknown }).tool;
+    const components = (parsed as { components?: unknown }).components;
+    if (tool !== "mcp.fetchContext" || !Array.isArray(components)) {
+      return null;
+    }
+    const normalized = components.filter((value): value is string => typeof value === "string");
+    if (normalized.length === 0) {
+      return null;
+    }
+    return {
+      tool,
+      components: Array.from(new Set(normalized))
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mergeMcpContexts(base: Awaited<ReturnType<MCPAdapter["fetchContext"]>>, next: Awaited<ReturnType<MCPAdapter["fetchContext"]>>) {
+  const ruleMap = new Map<string, (typeof base.componentRules)[number]>();
+  for (const rule of base.componentRules) {
+    ruleMap.set(rule.name, rule);
+  }
+  for (const rule of next.componentRules) {
+    ruleMap.set(rule.name, rule);
+  }
+  return {
+    contextVersion: `${base.contextVersion}+${next.contextVersion}`,
+    componentRules: Array.from(ruleMap.values())
+  };
 }
 
 function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
@@ -219,6 +268,7 @@ export async function* runGenerationV2(
 
     yield { type: "status", generationId, stage: "mcp_fetch_context_v2" };
     const mcpContext = await deps.mcp.fetchContext(pass1.components);
+    let runtimeContext = mcpContext;
     const allowedComponentTypes = getAllowedComponentTypeSetV2();
 
     const minimumElementFloor = estimatePromptPackMinElements(
@@ -255,12 +305,12 @@ export async function* runGenerationV2(
         deps.model.streamDesignV2?.({
           prompt: streamPrompt,
           previousSpec: baseVersion?.specSnapshot ?? null,
-          componentContext: mcpContext
+          componentContext: runtimeContext
         }) ??
         deps.model.streamDesign({
           prompt: streamPrompt,
           previousSpec: baseVersion?.specSnapshot ?? null,
-          componentContext: mcpContext
+          componentContext: runtimeContext
         });
 
       let acceptedOnAttempt = false;
@@ -276,18 +326,77 @@ export async function* runGenerationV2(
 
           for (const objectText of extracted.objects) {
             observedObjectOnAttempt = true;
+            const toolCall = parseModelToolCall(objectText);
+            if (toolCall) {
+              const fetched = await deps.mcp.fetchContext(toolCall.components);
+              runtimeContext = mergeMcpContexts(runtimeContext, fetched);
+              const warning = {
+                type: "warning" as const,
+                generationId,
+                code: "V2_TOOL_CALL_EXECUTED",
+                message: `Executed tool call '${toolCall.tool}' for components: ${toolCall.components.join(", ")}`
+              };
+              warnings.push({ code: warning.code, message: warning.message });
+              yield warning;
+              lastValidationIssues = [
+                {
+                  code: warning.code,
+                  message: warning.message
+                }
+              ];
+              continue;
+            }
+
             const snapshot = parseCandidateSnapshotV2(objectText);
             if (!snapshot) {
               continue;
             }
 
             sawAnyCandidate = true;
-            const candidateSpec = normalizeTreeToSpecV2(snapshot);
+            const initialCandidateSpec = normalizeTreeToSpecV2(snapshot);
+            let candidateSpec = initialCandidateSpec;
+            let structuralSchemaIssues = validateStructuralSpecV2(candidateSpec).issues.map((issue) => ({
+              code: issue.code,
+              message: issue.message
+            }));
+
+            if (structuralSchemaIssues.length > 0) {
+              const fixed = autoFixStructuralSpecV2(candidateSpec);
+              if (fixed.fixes.length > 0) {
+                const fixedStructural = validateStructuralSpecV2(fixed.spec);
+                if (fixedStructural.valid) {
+                  candidateSpec = fixed.spec;
+                  structuralSchemaIssues = [];
+                  const warning = {
+                    type: "warning" as const,
+                    generationId,
+                    code: "V2_AUTOFIX_APPLIED",
+                    message: `Applied structural auto-fix before semantic validation: ${fixed.fixes.join(" ")}`
+                  };
+                  warnings.push({ code: warning.code, message: warning.message });
+                  yield warning;
+                } else {
+                  structuralSchemaIssues = fixedStructural.issues.map((issue) => ({
+                    code: issue.code,
+                    message: issue.message
+                  }));
+                  const warning = {
+                    type: "warning" as const,
+                    generationId,
+                    code: "V2_AUTOFIX_FAILED",
+                    message: "Structural auto-fix attempted but candidate still has structural errors."
+                  };
+                  warnings.push({ code: warning.code, message: warning.message });
+                  yield warning;
+                }
+              }
+            }
+
             const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
             const semanticIssues = validation.valid
               ? []
               : validation.issues.map((issue) => ({ code: issue.code, message: issue.message }));
-            const structuralIssues = validateConstraintSetV2(candidateSpec, constraintSet).map((issue) => ({
+            const constraintIssues = validateConstraintSetV2(candidateSpec, constraintSet).map((issue) => ({
               code: issue.code,
               message: issue.message
             }));
@@ -300,7 +409,12 @@ export async function* runGenerationV2(
                     }
                   ]
                 : [];
-            const allIssues = [...semanticIssues, ...structuralIssues, ...sparseIssues];
+            const allIssues = [
+              ...structuralSchemaIssues,
+              ...semanticIssues,
+              ...constraintIssues,
+              ...sparseIssues
+            ];
 
             if (allIssues.length > 0) {
               const signature = buildStructuralSignature(candidateSpec);
@@ -460,7 +574,7 @@ export async function* runGenerationV2(
     const assistantReasoningText = [
       `Generated semantic v2 UI for prompt "${request.prompt.slice(0, 120)}".`,
       `Intent confidence: ${pass1.confidence.toFixed(2)}.`,
-      `MCP context ${mcpContext.contextVersion} supplied ${mcpContext.componentRules.length} rule(s).`,
+      `MCP context ${runtimeContext.contextVersion} supplied ${runtimeContext.componentRules.length} rule(s).`,
       `Applied ${patchCount} patch(es); warnings: ${warnings.length}.`
     ].join(" ");
 

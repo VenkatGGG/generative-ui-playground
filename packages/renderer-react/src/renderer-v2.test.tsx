@@ -7,6 +7,18 @@ import { DynamicRendererV2 } from "./renderer-v2";
 const Card = ({ children }: { children?: React.ReactNode }) => <section>{children}</section>;
 const Text = ({ text }: { text?: string }) => <p>{text}</p>;
 const Stack = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+const CardWithSlots = ({
+  children,
+  footer
+}: {
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+}) => (
+  <section>
+    {children}
+    <footer>{footer}</footer>
+  </section>
+);
 
 describe("DynamicRendererV2", () => {
   it("renders repeated content with dynamic item bindings", () => {
@@ -121,5 +133,45 @@ describe("DynamicRendererV2", () => {
     );
 
     expect(html).toContain("Visible despite malformed visibility");
+  });
+
+  it("renders named slot children", () => {
+    const spec: UISpecV2 = {
+      root: "root",
+      state: {},
+      elements: {
+        root: {
+          type: "Card",
+          props: {},
+          children: ["body"],
+          slots: {
+            footer: ["footerText"]
+          }
+        },
+        body: {
+          type: "Text",
+          props: { text: "Body text" },
+          children: []
+        },
+        footerText: {
+          type: "Text",
+          props: { text: "Footer text" },
+          children: []
+        }
+      }
+    };
+
+    const html = renderToStaticMarkup(
+      <DynamicRendererV2
+        spec={spec}
+        registry={{
+          Card: CardWithSlots as never,
+          Text: Text as never
+        }}
+      />
+    );
+
+    expect(html).toContain("Body text");
+    expect(html).toContain("Footer text");
   });
 });

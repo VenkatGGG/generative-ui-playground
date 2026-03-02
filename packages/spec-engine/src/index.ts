@@ -5,3 +5,4 @@ export * from "./diff";
 export * from "./patch";
 export * from "./runtime-v2";
 export * from "./validate-v2";
+export * from "./structural-v2";
