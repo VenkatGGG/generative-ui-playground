@@ -86,6 +86,15 @@ function createGeminiActionBindingSchema(): Record<string, unknown> {
   };
 }
 
+function createGeminiActionBindingOrArraySchema(): Record<string, unknown> {
+  return {
+    anyOf: [
+      createGeminiActionBindingSchema(),
+      { type: "ARRAY", items: createGeminiActionBindingSchema() }
+    ]
+  };
+}
+
 function createGeminiVisibilitySchema(depth: number): Record<string, unknown> {
   const visibilityRef: Record<string, unknown> = {
     type: "OBJECT",
@@ -141,7 +150,7 @@ function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
       id: { type: "STRING" },
       type: { type: "STRING", enum: [...ALLOWED_COMPONENT_TYPES_V2] },
       props: { type: "OBJECT" },
-      visible: createGeminiVisibilitySchema(3),
+      visible: createGeminiVisibilitySchema(2),
       repeat: {
         type: "OBJECT",
         required: ["statePath"],
@@ -152,21 +161,14 @@ function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
       },
       on: {
         type: "OBJECT",
-        additionalProperties: {
-          anyOf: [
-            createGeminiActionBindingSchema(),
-            { type: "ARRAY", items: createGeminiActionBindingSchema() }
-          ]
+        properties: {
+          press: createGeminiActionBindingOrArraySchema(),
+          change: createGeminiActionBindingOrArraySchema(),
+          submit: createGeminiActionBindingOrArraySchema()
         }
       },
       watch: {
-        type: "OBJECT",
-        additionalProperties: {
-          anyOf: [
-            createGeminiActionBindingSchema(),
-            { type: "ARRAY", items: createGeminiActionBindingSchema() }
-          ]
-        }
+        type: "OBJECT"
       }
     }
   };
@@ -191,7 +193,7 @@ const GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA: Record<string, unknown> = {
     state: {
       type: "OBJECT"
     },
-    tree: createGeminiNodeSchemaV2(5)
+    tree: createGeminiNodeSchemaV2(3)
   }
 };
 
