@@ -65,4 +65,24 @@ describe("generationReducerV2", () => {
 
     expect(afterRemove.spec?.elements.root?.on).toBeUndefined();
   });
+
+  it("surfaces deterministic error when a patch cannot be applied", () => {
+    const afterStatus = generationReducerV2(initialGenerationStateV2, {
+      type: "status",
+      generationId: "g3",
+      stage: "pass2_stream_design"
+    });
+
+    const afterInvalidPatch = generationReducerV2(afterStatus, {
+      type: "patch",
+      generationId: "g3",
+      patch: {
+        op: "remove",
+        path: "/elements/root/on"
+      }
+    });
+
+    expect(afterInvalidPatch.error?.code).toBe("PATCH_APPLY_FAILED");
+    expect(afterInvalidPatch.isStreaming).toBe(false);
+  });
 });

@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  generationReducerV2,
-  initialGenerationStateV2,
-  streamGenerateV2,
-  StreamGenerateErrorV2
+  type GenerationStateV2,
+  StreamGenerateErrorV2,
+  useUIStreamV2
 } from "@repo/client-core";
 import type { ThreadBundleV2, UISpecV2, VersionRecordV2 } from "@repo/contracts";
 import {
@@ -289,7 +288,7 @@ function findActiveSpec(bundle: ThreadBundleV2): UISpecV2 | null {
   return active?.specSnapshot ?? null;
 }
 
-function statusFromState(state: ReturnType<typeof generationReducerV2>): "idle" | "streaming" | "error" {
+function statusFromState(state: GenerationStateV2): "idle" | "streaming" | "error" {
   if (state.error) {
     return "error";
   }
@@ -307,7 +306,13 @@ export default function HomePage() {
   const [versions, setVersions] = useState<VersionRecordV2[]>([]);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [revertState, setRevertState] = useState<RevertState>({ versionId: null, loading: false });
-  const [state, dispatch] = useReducer(generationReducerV2, initialGenerationStateV2);
+  const {
+    state,
+    send: streamGenerate,
+    hydrate
+  } = useUIStreamV2({
+    endpoint: "/api/v2/generate"
+  });
 
   const status = statusFromState(state);
   const statusVariant = useMemo<"outline" | "secondary" | "destructive">(() => {
@@ -321,7 +326,7 @@ export default function HomePage() {
     }
   }, [status]);
 
-  const refreshThread = async (threadId: string) => {
+  const refreshThread = useCallback(async (threadId: string) => {
     const response = await fetch(`/api/v2/threads/${threadId}`, { method: "GET" });
     if (!response.ok) {
       throw new Error(`Failed to load thread (${response.status})`);
@@ -341,8 +346,8 @@ export default function HomePage() {
 
     const activeSpec = findActiveSpec(nextBundle);
     setHydratedSpec(activeSpec);
-    dispatch({ type: "hydrate", spec: activeSpec });
-  };
+    hydrate(activeSpec);
+  }, [hydrate]);
 
   useEffect(() => {
     let mounted = true;
@@ -379,7 +384,7 @@ export default function HomePage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshThread]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -390,38 +395,15 @@ export default function HomePage() {
     }
 
     setThreadError(null);
-    dispatch({ type: "hydrate", spec: findActiveSpec(bundle) });
+    hydrate(findActiveSpec(bundle));
 
     try {
-      await streamGenerateV2({
-        endpoint: "/api/v2/generate",
-        body: {
-          threadId: bundle.thread.threadId,
-          prompt: text,
-          baseVersionId: bundle.thread.activeVersionId
-        },
-        onEvent: (incomingEvent) => {
-          try {
-            dispatch(incomingEvent);
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : "Could not apply streamed patch update.";
-
-            dispatch({
-              type: "error",
-              generationId: incomingEvent.generationId,
-              code: "PATCH_APPLY_FAILED",
-              message
-            });
-
-            throw new Error(`PATCH_APPLY_FAILED:${message}`);
-          }
-
-          if (incomingEvent.type === "done") {
-            void refreshThread(bundle.thread.threadId);
-          }
-        }
+      await streamGenerate({
+        threadId: bundle.thread.threadId,
+        prompt: text,
+        baseVersionId: bundle.thread.activeVersionId
       });
+      await refreshThread(bundle.thread.threadId);
       setPrompt("");
     } catch (error) {
       if (
@@ -434,17 +416,8 @@ export default function HomePage() {
         return;
       }
 
-      if (error instanceof StreamGenerateErrorV2 && error.code === "STREAM_INTERRUPTED") {
-        dispatch({
-          type: "error",
-          generationId: state.generationId ?? "unknown",
-          code: "STREAM_INTERRUPTED",
-          message: error.message
-        });
-      }
-
       const message = error instanceof Error ? error.message : "Generation failed.";
-      setThreadError(message.replace(/^PATCH_APPLY_FAILED:/, "Patch apply failed: "));
+      setThreadError(message);
     }
   };
 

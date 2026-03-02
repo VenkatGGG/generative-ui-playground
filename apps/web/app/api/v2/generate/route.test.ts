@@ -87,7 +87,7 @@ describe("v2 generate route", () => {
 
     const { InMemoryPersistenceAdapter } = await import("@repo/persistence");
     const persistence: PersistenceAdapter = new InMemoryPersistenceAdapter();
-    const thread = await persistence.createThreadV2("Route fallback thread");
+    const thread = await persistence.createThreadV2({ title: "Route fallback thread" });
 
     const model: GenerationModelAdapter = {
       async extractComponents() {

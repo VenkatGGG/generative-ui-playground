@@ -16,8 +16,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "devDependencies": {
+    "@types/react": "^19.1.8"
+  },
   "dependencies": {
     "@repo/contracts": "workspace:*",
-    "@repo/spec-engine": "workspace:*"
+    "@repo/spec-engine": "workspace:*",
+    "react": "^19.1.0"
   }
 }

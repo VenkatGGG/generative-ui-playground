@@ -18,7 +18,10 @@ export interface GenerationStateV2 {
   usage: GenerationUsageV2 | null;
 }
 
-export type GenerationActionV2 = StreamEventV2 | { type: "hydrate"; spec: UISpecV2 | null };
+export type GenerationActionV2 =
+  | StreamEventV2
+  | { type: "hydrate"; spec: UISpecV2 | null }
+  | { type: "reset"; spec?: UISpecV2 | null };
 
 export const initialGenerationStateV2: GenerationStateV2 = {
   generationId: null,
@@ -32,6 +35,12 @@ export const initialGenerationStateV2: GenerationStateV2 = {
 
 export function generationReducerV2(state: GenerationStateV2, event: GenerationActionV2): GenerationStateV2 {
   switch (event.type) {
+    case "reset": {
+      return {
+        ...initialGenerationStateV2,
+        spec: event.spec === undefined ? state.spec : event.spec
+      };
+    }
     case "hydrate": {
       return {
         ...state,
@@ -54,7 +63,19 @@ export function generationReducerV2(state: GenerationStateV2, event: GenerationA
           elements: {}
         } satisfies UISpecV2);
 
-      const spec = applySpecPatches(baseSpec, [event.patch]) as UISpecV2;
+      let spec: UISpecV2;
+      try {
+        spec = applySpecPatches(baseSpec, [event.patch]) as UISpecV2;
+      } catch (error) {
+        return {
+          ...state,
+          isStreaming: false,
+          error: {
+            code: "PATCH_APPLY_FAILED",
+            message: error instanceof Error ? error.message : "Patch application failed."
+          }
+        };
+      }
       return {
         ...state,
         generationId: event.generationId,
