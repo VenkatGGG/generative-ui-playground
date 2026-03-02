@@ -66,6 +66,27 @@ For `v2` generation, pass2 must return exactly one structured JSON snapshot per 
 - Shape: `{ state?: object, tree: UIComponentNodeV2 }`
 - Multiple root JSON objects are invalid and treated as malformed output.
 
+## Studio v2 Flow
+
+- Frontend uses `useUIStreamV2` and targets `/api/v2/*`.
+- Stream transport is SSE; client applies backend-generated RFC6902 patches progressively.
+- Studio sidebar surfaces:
+  - generation status
+  - warning count and warning details
+  - usage tokens from `usage` events
+  - thread version timeline with revert controls
+
+## v2 Runtime Semantics
+
+`DynamicRendererV2` supports:
+
+- state bindings: `$state`, `$bindState`
+- repeat scope bindings: `$item`, `$index`, `$bindItem`
+- conditional values: `$cond/$then/$else`
+- visibility DSL: boolean/comparator/`$and`/`$or`/`not`
+- actions and watchers: `on` + `watch` with built-ins (`setState`, `pushState`, `removeState`, `validateForm`)
+- named slots via `slots` in `UISpecElementV2`
+
 ## Troubleshooting (Real Mode)
 
 - `V2_SPARSE_OUTPUT`:

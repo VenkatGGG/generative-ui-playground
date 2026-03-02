@@ -138,6 +138,26 @@ type StreamEventV2 =
   | { type: "error"; generationId: string; code: string; message: string };
 ```
 
+### v2 Status Stages
+
+- `pass1_extract_components_v2`
+- `mcp_fetch_context_v2`
+- `pass2_stream_design_v2`
+- `pass2_stream_design_v2_retry_<n>`
+
+### v2 Candidate Acceptance Pipeline
+
+Each pass2 snapshot is processed in deterministic order:
+
+1. parse snapshot
+2. normalize to `UISpecV2`
+3. structural validation
+4. optional structural auto-fix + revalidation
+5. semantic validation
+6. constraint validation
+7. sparse-output floor check
+8. diff + patch emission if accepted
+
 ### v2 Pass2 Contract
 
 For each model attempt, pass2 is instructed to output exactly one JSON object:
@@ -154,5 +174,8 @@ Multiple root JSON objects in one response are invalid for v2 and can trigger re
 - `V2_CARD_STRUCTURE_MISSING`: card intent/spec missing required card sub-structure.
 - `V2_REQUIRED_COMPONENT_MISSING`: intent requires components that are absent (for example form controls).
 - `V2_NO_STRUCTURAL_PROGRESS`: retries produced equivalent sparse structure.
+- `V2_AUTOFIX_APPLIED`: structural auto-fix repaired candidate shape before semantic validation.
+- `V2_AUTOFIX_FAILED`: auto-fix attempted but candidate remained structurally invalid.
+- `V2_TOOL_CALL_EXECUTED`: in-session model tool call executed (`mcp.fetchContext`).
 - `PASS2_STREAM_FAILED`: upstream model stream failure (including transient provider unavailability).
 - `FALLBACK_APPLIED`: retry budget exhausted; deterministic fallback output was emitted.

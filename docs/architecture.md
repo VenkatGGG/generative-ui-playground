@@ -12,10 +12,10 @@
 3. Pass 1 extracts component names.
 4. MCP adapter fetches context only for those components.
 5. Pass 2 requests one structured JSON snapshot per attempt (`{ state?: object, tree: UIComponentNodeV2 }` in v2).
-6. Backend normalizes + validates each candidate.
-7. Backend computes RFC6902 patches from canonical -> candidate.
-8. Backend streams SSE JSONL patch/status events.
-9. Client applies patches incrementally to local spec.
+6. Candidate pipeline in v2: parse -> normalize -> structural validate -> structural autofix (if needed) -> semantic validate -> constraint validate -> sparse gate.
+7. If candidate passes, backend computes RFC6902 patches from canonical -> candidate and streams them.
+8. If candidate fails, backend emits deterministic warning codes and retries with validator feedback.
+9. Client applies patches incrementally to local spec via `useUIStreamV2`.
 10. Final version/messages/logs are persisted and `done` event is emitted.
 11. Failed generations emit `error` events and are logged with `generationLogs.errorCode`.
 
@@ -33,6 +33,14 @@
 - v2 stream events add `usage` token metadata
 - Persistence stores version lineage with `schemaVersion: "v2"` for v2 versions
 
+## v2 Runtime Providers
+
+`@repo/renderer-react` v2 renderer uses explicit runtime providers:
+
+- `RuntimeProviderV2`: owns runtime state, built-in actions, and watch-trigger execution.
+- `RepeatScopeProviderV2`: carries `$item/$index` scope through repeated subtrees.
+- `DynamicRendererV2`: recursively resolves props/visibility/repeat/slots, injects event handlers, and isolates each node through error boundaries.
+
 ## Core Guarantees
 
 - Backend is the source of truth for patch math.
@@ -43,6 +51,15 @@
 - Iterative refinement uses version lineage, not mutable state rewrites.
 - Failure paths are logged for analytics without mutating successful version lineage.
 - Generation logs persist timing via `durationMs` alongside warning/patch/error metadata.
+
+## Pass2 Tool Loop
+
+v2 pass2 supports in-session tool requests from the model stream:
+
+- Model may emit `{"tool":"mcp.fetchContext","components":[...]}`.
+- Orchestrator resolves tool calls through MCP adapter and merges returned context into current runtime context.
+- Tool execution emits warning code `V2_TOOL_CALL_EXECUTED` for traceability.
+- Flow remains deterministic: candidate acceptance still requires full validation and diff checks.
 
 ## Real-Mode Quality Controls
 
@@ -57,6 +74,8 @@
 
 - Structural validators reject semantically thin but syntactically valid candidates.
 - Warnings include deterministic codes such as:
+  - `V2_AUTOFIX_APPLIED`
+  - `V2_AUTOFIX_FAILED`
   - `V2_CARD_STRUCTURE_MISSING`
   - `V2_REQUIRED_COMPONENT_MISSING`
   - `V2_NO_STRUCTURAL_PROGRESS`
@@ -83,4 +102,4 @@ Persistence interface and in-memory adapter.
 SSE parser and reducer for patch-driven client state.
 
 ### `@repo/renderer-react`
-Recursive renderer, strict component registry, render error boundaries.
+Provider-based recursive renderer (`RuntimeProviderV2` + `RepeatScopeProviderV2`), strict component registry, and render error boundaries.
