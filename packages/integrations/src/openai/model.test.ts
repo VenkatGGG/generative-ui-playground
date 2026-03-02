@@ -123,6 +123,11 @@ describe("createOpenAIGenerationModel", () => {
       expect(body.messages?.[0]?.content ?? "").toContain("PROMPT PACK:");
       expect(body.messages?.[0]?.content ?? "").toContain("GOOD_EXAMPLE_1");
       expect(body.messages?.[0]?.content ?? "").toContain("ANTI-SKELETON");
+      expect(body.messages?.[0]?.content ?? "").toContain("Output exactly one JSON object");
+      expect(body.messages?.[0]?.content ?? "").toContain("Do not output multiple root JSON objects");
+      expect(body.messages?.[0]?.content ?? "").not.toContain(
+        "Output newline-delimited JSON objects only."
+      );
 
       return new Response(ssePayload, {
         status: 200,

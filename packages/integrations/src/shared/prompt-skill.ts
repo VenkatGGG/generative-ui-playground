@@ -11,7 +11,7 @@ export interface PromptStyleTokens {
 
 interface PackExamples {
   good: Array<Record<string, unknown>>;
-  bad: Record<string, unknown>;
+  bad: string;
 }
 
 interface PromptPackDefinition {
@@ -140,7 +140,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           ]
         }
       ],
-      bad: { id: "root", type: "Card", children: [] }
+      bad: "Anti-pattern: single empty Card node with no header/content/body actions."
     },
     examplesV2: {
       good: [
@@ -204,7 +204,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         }
       ],
-      bad: { tree: { id: "root", type: "Card" } }
+      bad: "Anti-pattern: one-node tree that only declares Card and no meaningful children."
     }
   },
   {
@@ -254,7 +254,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           ]
         }
       ],
-      bad: { id: "root", type: "Text", children: ["Dashboard"] }
+      bad: "Anti-pattern: returning only one Text node for a multi-section dashboard prompt."
     },
     examplesV2: {
       good: [
@@ -299,7 +299,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         }
       ],
-      bad: { tree: { id: "root", type: "Card", children: [] } }
+      bad: "Anti-pattern: Card with empty children and no metric hierarchy."
     }
   },
   {
@@ -347,7 +347,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           ]
         }
       ],
-      bad: { id: "root", type: "Input", props: { placeholder: "Only one field" } }
+      bad: "Anti-pattern: single form control without container, supporting copy, or submit action."
     },
     examplesV2: {
       good: [
@@ -401,7 +401,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         }
       ],
-      bad: { tree: { id: "root", type: "Button", children: ["Submit"] } }
+      bad: "Anti-pattern: lone submit button with no inputs or form state bindings."
     }
   },
   {
@@ -441,7 +441,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           ]
         }
       ],
-      bad: { id: "root", type: "Card", children: [{ id: "btn", type: "Button", children: ["Click"] }] }
+      bad: "Anti-pattern: hero layout reduced to a single button with no headline/supporting text."
     },
     examplesV2: {
       good: [
@@ -481,7 +481,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         }
       ],
-      bad: { tree: { id: "root", type: "Text", children: ["Hero"] } }
+      bad: "Anti-pattern: one short text node without hero hierarchy or CTA grouping."
     }
   }
 ];
@@ -519,7 +519,7 @@ function findPackById(id: PromptPackId): PromptPackDefinition {
             children: [{ id: "txt", type: "Text", children: ["Meaningful content"] }]
           }
         ],
-        bad: { id: "root", type: "Card" }
+        bad: "Anti-pattern: bare Card root without meaningful content hierarchy."
       },
       examplesV2: {
         good: [
@@ -546,7 +546,7 @@ function findPackById(id: PromptPackId): PromptPackDefinition {
             }
           }
         ],
-        bad: { tree: { id: "root", type: "Card", children: [] } }
+        bad: "Anti-pattern: semantic snapshot with empty Card and no actionable content."
       }
     };
   }
@@ -624,7 +624,7 @@ export function buildPromptSkillSection(input: PromptSkillSectionInput): string 
   lines.push("FEW-SHOT EXAMPLES:");
   lines.push(`GOOD_EXAMPLE_1: ${JSON.stringify(examples.good[0])}`);
   lines.push(`GOOD_EXAMPLE_2: ${JSON.stringify(examples.good[1])}`);
-  lines.push(`BAD_EXAMPLE_REJECT: ${JSON.stringify(examples.bad)}`);
+  lines.push(`BAD_EXAMPLE_REJECT: ${examples.bad}`);
 
   return lines.join("\n");
 }
@@ -633,8 +633,8 @@ export function buildPass2ContractBlock(isV2: boolean): string {
   if (isV2) {
     return [
       "PASS2 CONTRACT (STRICT):",
-      "- Output newline-delimited JSON objects only.",
-      "- Each line must be { state?: object, tree: UIComponentNodeV2 }.",
+      "- Output exactly one JSON object matching { state?: object, tree: UIComponentNodeV2 }.",
+      "- Do not output multiple root JSON objects in one response.",
       "- Use only allowed component types from the catalog section.",
       "- Enforce valid semantic fields: visible, repeat, on, watch, dynamic expressions.",
       "- Never output empty/sparse skeletons; produce complete, renderable layouts."
@@ -671,7 +671,7 @@ export function buildRetryPromptWithValidationFeedback(
     "",
     `Retry attempt ${attempt}. You MUST fix all validation findings below:`,
     ...lines,
-    "Do not repeat the prior invalid structure. Return complete valid JSON snapshots only."
+    "Do not repeat the prior invalid structure. Return exactly one complete valid JSON snapshot."
   ].join("\n");
 }
 

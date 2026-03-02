@@ -41,9 +41,14 @@ describe("prompt skill layer", () => {
     );
     expect(retryPrompt).toContain("Retry attempt 2");
     expect(retryPrompt).toContain("V2_INVALID_VISIBLE_EXPRESSION");
+    expect(retryPrompt).toContain("exactly one complete valid JSON snapshot");
 
-    expect(buildPass2ContractBlock(false)).toContain("UIComponentNode");
-    expect(buildPass2ContractBlock(true)).toContain("UIComponentNodeV2");
+    const contractV1 = buildPass2ContractBlock(false);
+    const contractV2 = buildPass2ContractBlock(true);
+    expect(contractV1).toContain("UIComponentNode");
+    expect(contractV2).toContain("UIComponentNodeV2");
+    expect(contractV2).toContain("Output exactly one JSON object");
+    expect(contractV2).not.toContain("Output newline-delimited JSON objects only.");
   });
 
   it("returns pack-specific anti-skeleton floors", () => {

@@ -123,6 +123,9 @@ describe("createGeminiGenerationModel", () => {
       expect(prompt).toContain("PROMPT PACK:");
       expect(prompt).toContain("GOOD_EXAMPLE_1");
       expect(prompt).toContain("ANTI-SKELETON");
+      expect(prompt).toContain("Output exactly one JSON object");
+      expect(prompt).toContain("Do not output multiple root JSON objects");
+      expect(prompt).not.toContain("Output newline-delimited JSON objects only.");
       expect(prompt).toContain("visible");
       expect(prompt).toContain("repeat");
       expect(prompt).toContain("on for events");
