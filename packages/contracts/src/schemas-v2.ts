@@ -2,55 +2,84 @@ import { z } from "zod";
 import type { StreamEventV2 } from "./types-v2";
 import { JsonPatchSchema, MessageRecordSchema, ThreadRecordSchema } from "./schemas";
 
-export const DynamicValueExprV2Schema = z.union([
-  z.object({ $state: z.string().min(1), default: z.unknown().optional() }).strict(),
-  z.object({ $item: z.string().min(1), default: z.unknown().optional() }).strict(),
-  z.object({ $index: z.literal(true) }).strict(),
-  z.object({ $bindState: z.string().min(1) }).strict(),
-  z.object({ $bindItem: z.string().min(1) }).strict()
-]);
+const VISIBILITY_COMPARATOR_SHAPE = {
+  eq: z.unknown().optional(),
+  neq: z.unknown().optional(),
+  gt: z.number().optional(),
+  gte: z.number().optional(),
+  lt: z.number().optional(),
+  lte: z.number().optional(),
+  not: z.boolean().optional()
+} as const;
 
-export const VisibilityConditionV2Schema: z.ZodType<
-  | boolean
-  | {
-      $state: string;
-      eq?: unknown;
-      neq?: unknown;
-      gt?: number;
-      gte?: number;
-      lt?: number;
-      lte?: number;
-      not?: boolean;
+function withComparatorValidation<T extends z.AnyZodObject>(schema: T): z.ZodEffects<T> {
+  return schema.superRefine((value, ctx) => {
+    const comparatorKeys = ["eq", "neq", "gt", "gte", "lt", "lte"] as const;
+    const presentComparators = comparatorKeys.filter(
+      (key) => (value as Record<string, unknown>)[key] !== undefined
+    );
+    if (presentComparators.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Only one comparator key is allowed in a visibility expression."
+      });
     }
-  | { $and: unknown[] }
-  | { $or: unknown[] }
-> = z.lazy(() =>
+  });
+}
+
+const VisibilityStateConditionSchema = withComparatorValidation(
+  z
+    .object({
+      $state: z.string().min(1),
+      ...VISIBILITY_COMPARATOR_SHAPE
+    })
+    .strict()
+);
+
+const VisibilityItemConditionSchema = withComparatorValidation(
+  z
+    .object({
+      $item: z.string().min(1),
+      ...VISIBILITY_COMPARATOR_SHAPE
+    })
+    .strict()
+);
+
+const VisibilityIndexConditionSchema = withComparatorValidation(
+  z
+  .object({
+    $index: z.literal(true),
+    ...VISIBILITY_COMPARATOR_SHAPE
+  })
+  .strict()
+);
+
+export const VisibilityConditionV2Schema: z.ZodType = z.lazy(() =>
   z.union([
     z.boolean(),
+    VisibilityStateConditionSchema,
+    VisibilityItemConditionSchema,
+    VisibilityIndexConditionSchema,
+    z.object({ $and: z.array(VisibilityConditionV2Schema).min(1) }).strict(),
+    z.object({ $or: z.array(VisibilityConditionV2Schema).min(1) }).strict(),
+    z.array(VisibilityConditionV2Schema).min(1)
+  ])
+);
+
+export const DynamicValueExprV2Schema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.object({ $state: z.string().min(1), default: z.unknown().optional() }).strict(),
+    z.object({ $item: z.string().min(1), default: z.unknown().optional() }).strict(),
+    z.object({ $index: z.literal(true) }).strict(),
+    z.object({ $bindState: z.string().min(1) }).strict(),
+    z.object({ $bindItem: z.string().min(1) }).strict(),
     z
       .object({
-        $state: z.string().min(1),
-        eq: z.unknown().optional(),
-        neq: z.unknown().optional(),
-        gt: z.number().optional(),
-        gte: z.number().optional(),
-        lt: z.number().optional(),
-        lte: z.number().optional(),
-        not: z.boolean().optional()
+        $cond: z.union([VisibilityConditionV2Schema, DynamicValueExprV2Schema]),
+        $then: z.unknown(),
+        $else: z.unknown()
       })
       .strict()
-      .superRefine((value, ctx) => {
-        const comparatorKeys = ["eq", "neq", "gt", "gte", "lt", "lte"] as const;
-        const presentComparators = comparatorKeys.filter((key) => value[key] !== undefined);
-        if (presentComparators.length > 1) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Only one comparator key is allowed in a $state visibility expression."
-          });
-        }
-      }),
-    z.object({ $and: z.array(VisibilityConditionV2Schema).min(1) }).strict(),
-    z.object({ $or: z.array(VisibilityConditionV2Schema).min(1) }).strict()
   ])
 );
 
@@ -76,6 +105,7 @@ export const UIComponentNodeV2Schema: z.ZodType<{
   id: string;
   type: string;
   props?: Record<string, unknown>;
+  slots?: Record<string, string[]>;
   visible?: unknown;
   repeat?: unknown;
   on?: Record<string, unknown>;
@@ -87,6 +117,7 @@ export const UIComponentNodeV2Schema: z.ZodType<{
       id: z.string().min(1),
       type: z.string().min(1),
       props: z.record(z.unknown()).optional(),
+      slots: z.record(z.array(z.string())).optional(),
       visible: VisibilityConditionV2Schema.optional(),
       repeat: RepeatConfigV2Schema.optional(),
       on: ActionBindingRecordV2Schema.optional(),
@@ -101,6 +132,7 @@ export const UISpecElementV2Schema = z
     type: z.string().min(1),
     props: z.record(z.unknown()),
     children: z.array(z.string()),
+    slots: z.record(z.array(z.string())).optional(),
     visible: VisibilityConditionV2Schema.optional(),
     repeat: RepeatConfigV2Schema.optional(),
     on: ActionBindingRecordV2Schema.optional(),

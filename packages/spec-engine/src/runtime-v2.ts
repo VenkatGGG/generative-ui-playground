@@ -83,7 +83,8 @@ function isDynamicValueExpr(value: unknown): value is DynamicValueExprV2 {
     typeof record.$item === "string" ||
     record.$index === true ||
     typeof record.$bindState === "string" ||
-    typeof record.$bindItem === "string"
+    typeof record.$bindItem === "string" ||
+    "$cond" in record
   );
 }
 
@@ -115,6 +116,14 @@ export function resolveDynamicValueV2(
       if ("$bindItem" in expr) {
         return { kind: "item", field: expr.$bindItem } satisfies ItemBindingRefV2;
       }
+      if ("$cond" in expr) {
+        const condition = expr.$cond;
+        const passed =
+          typeof condition === "boolean"
+            ? condition
+            : evaluateVisibilityV2(condition as VisibilityConditionV2, context);
+        return resolveDynamicValueV2(passed ? expr.$then : expr.$else, context);
+      }
     }
 
     const next: Record<string, unknown> = {};
@@ -127,31 +136,43 @@ export function resolveDynamicValueV2(
   return value;
 }
 
-function compareVisibilityValues(left: unknown, condition: VisibilityConditionV2): boolean {
-  if (typeof condition === "boolean") {
-    return condition;
-  }
-
-  if ("eq" in condition && condition.eq !== undefined) {
+function compareVisibilityValues(left: unknown, condition: Record<string, unknown>): boolean {
+  if (condition.eq !== undefined) {
     return left === condition.eq;
   }
-  if ("neq" in condition && condition.neq !== undefined) {
+  if (condition.neq !== undefined) {
     return left !== condition.neq;
   }
-  if ("gt" in condition && condition.gt !== undefined) {
-    return typeof left === "number" && left > condition.gt;
+  if (condition.gt !== undefined) {
+    return typeof left === "number" && typeof condition.gt === "number" && left > condition.gt;
   }
-  if ("gte" in condition && condition.gte !== undefined) {
-    return typeof left === "number" && left >= condition.gte;
+  if (condition.gte !== undefined) {
+    return typeof left === "number" && typeof condition.gte === "number" && left >= condition.gte;
   }
-  if ("lt" in condition && condition.lt !== undefined) {
-    return typeof left === "number" && left < condition.lt;
+  if (condition.lt !== undefined) {
+    return typeof left === "number" && typeof condition.lt === "number" && left < condition.lt;
   }
-  if ("lte" in condition && condition.lte !== undefined) {
-    return typeof left === "number" && left <= condition.lte;
+  if (condition.lte !== undefined) {
+    return typeof left === "number" && typeof condition.lte === "number" && left <= condition.lte;
   }
 
   return Boolean(left);
+}
+
+function resolveVisibilityValue(
+  condition: Record<string, unknown>,
+  context: RuntimeResolveContextV2
+): unknown {
+  if (typeof condition.$state === "string") {
+    return getValueAtStatePath(context.state, condition.$state);
+  }
+  if (typeof condition.$item === "string") {
+    return context.scope ? getRepeatItemField(context.scope.item, condition.$item) : undefined;
+  }
+  if (condition.$index === true) {
+    return context.scope?.index;
+  }
+  return undefined;
 }
 
 export function evaluateVisibilityV2(
@@ -164,7 +185,10 @@ export function evaluateVisibilityV2(
   if (typeof condition === "boolean") {
     return condition;
   }
-  if (typeof condition !== "object" || Array.isArray(condition)) {
+  if (Array.isArray(condition)) {
+    return condition.every((entry) => evaluateVisibilityV2(entry, context));
+  }
+  if (typeof condition !== "object") {
     return true;
   }
 
@@ -179,10 +203,17 @@ export function evaluateVisibilityV2(
       ? condition.$or.some((entry) => evaluateVisibilityV2(entry, context))
       : true;
   }
-
-  const value = getValueAtStatePath(context.state, condition.$state);
-  const result = compareVisibilityValues(value, condition);
-  return condition.not ? !result : result;
+  const record = condition as Record<string, unknown>;
+  const hasSelector =
+    typeof record.$state === "string" ||
+    typeof record.$item === "string" ||
+    record.$index === true;
+  if (!hasSelector) {
+    return true;
+  }
+  const value = resolveVisibilityValue(record, context);
+  const result = compareVisibilityValues(value, record);
+  return record.not === true ? !result : result;
 }
 
 export interface RepeatExpansionV2 {

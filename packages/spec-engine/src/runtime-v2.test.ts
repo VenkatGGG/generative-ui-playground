@@ -29,6 +29,25 @@ describe("runtime-v2", () => {
     expect(resolvedIndex).toBe(2);
   });
 
+  it("resolves conditional dynamic expressions", () => {
+    const state = {
+      form: {
+        accepted: true
+      }
+    };
+
+    const resolved = resolveDynamicValueV2(
+      {
+        $cond: { $state: "/form/accepted", eq: true },
+        $then: "default",
+        $else: "secondary"
+      },
+      { state }
+    );
+
+    expect(resolved).toBe("default");
+  });
+
   it("resolves binding expressions", () => {
     const boundState = resolveDynamicValueV2({ $bindState: "/form/title" }, { state: {} });
     const boundItem = resolveDynamicValueV2({ $bindItem: "id" }, { state: {} });
@@ -40,7 +59,8 @@ describe("runtime-v2", () => {
   it("evaluates visibility expressions", () => {
     const state = {
       form: { valid: true },
-      count: 3
+      count: 3,
+      items: [{ enabled: true }, { enabled: false }]
     };
 
     expect(evaluateVisibilityV2({ $state: "/form/valid", eq: true }, { state })).toBe(true);
@@ -50,6 +70,12 @@ describe("runtime-v2", () => {
         { $and: [{ $state: "/form/valid", eq: true }, { $state: "/count", gte: 3 }] },
         { state }
       )
+    ).toBe(true);
+    expect(
+      evaluateVisibilityV2([{ $item: "enabled", eq: true }, { $index: true, lt: 1 }], {
+        state,
+        scope: { item: state.items[0], index: 0 }
+      })
     ).toBe(true);
   });
 

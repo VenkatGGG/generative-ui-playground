@@ -19,6 +19,7 @@ export interface SpecEngineIssueV2 {
     | "V2_MISSING_ROOT"
     | "V2_MISSING_ROOT_ELEMENT"
     | "V2_MISSING_CHILD_ELEMENT"
+    | "V2_MISSING_SLOT_CHILD_ELEMENT"
     | "V2_MAX_DEPTH_EXCEEDED"
     | "V2_MAX_NODES_EXCEEDED"
     | "V2_UNKNOWN_COMPONENT"
@@ -352,6 +353,22 @@ export function validateSpecV2(spec: UISpecV2, options: ValidationOptionsV2 = {}
         });
       } else {
         walk(childId, depth + 1);
+      }
+    }
+
+    if (element.slots) {
+      for (const [slotName, slotChildren] of Object.entries(element.slots)) {
+        for (const childId of slotChildren) {
+          if (!spec.elements[childId]) {
+            issues.push({
+              code: "V2_MISSING_SLOT_CHILD_ELEMENT",
+              message: `Element '${elementId}' slot '${slotName}' references missing child '${childId}'.`,
+              elementId
+            });
+            continue;
+          }
+          walk(childId, depth + 1);
+        }
       }
     }
   };

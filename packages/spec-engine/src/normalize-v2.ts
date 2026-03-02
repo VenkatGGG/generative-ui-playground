@@ -38,6 +38,7 @@ function normalizeNode(
     type: node.type,
     props: (node.props ?? {}) as Record<string, unknown>,
     children: childIds,
+    slots: node.slots,
     visible: node.visible,
     repeat: node.repeat,
     on: node.on,

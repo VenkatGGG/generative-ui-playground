@@ -136,6 +136,23 @@ describe("validateSpecV2", () => {
     expect(result.issues.some((issue) => issue.code === "V2_INVALID_VISIBLE_EXPRESSION")).toBe(true);
   });
 
+  it("rejects slot references to missing elements", () => {
+    const base = buildBaseSpec();
+    const spec = buildBaseSpec({
+      elements: {
+        ...base.elements,
+        content: {
+          ...base.elements.content!,
+          slots: {
+            footer: ["missing-child"]
+          }
+        }
+      }
+    });
+    const result = validateSpecV2(spec);
+    expect(result.issues.some((issue) => issue.code === "V2_MISSING_SLOT_CHILD_ELEMENT")).toBe(true);
+  });
+
   it("rejects invalid Select options shape", () => {
     const base = buildBaseSpec();
     const spec = buildBaseSpec({

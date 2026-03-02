@@ -163,6 +163,11 @@ function resolveActionParams(
   return (resolved ?? {}) as Record<string, unknown>;
 }
 
+function resolveActionPath(params: Record<string, unknown>): string | null {
+  const raw = typeof params.path === "string" ? params.path : params.statePath;
+  return typeof raw === "string" ? raw : null;
+}
+
 function resolveBoundValue(ref: BindingRefV2, state: Record<string, unknown>, scope?: RepeatScopeV2): unknown {
   if (ref.kind === "state") {
     return getValueAtStatePath(state, ref.path);
@@ -206,7 +211,7 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         const params = resolveActionParams(action.params, current, scope);
 
         if (action.action === "setState") {
-          const path = params.path;
+          const path = resolveActionPath(params);
           if (typeof path !== "string" || !path.startsWith("/")) {
             warn({
               code: "V2_ACTION_INVALID_SET_STATE",
@@ -220,7 +225,7 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         }
 
         if (action.action === "pushState") {
-          const path = params.path;
+          const path = resolveActionPath(params);
           if (typeof path !== "string" || !path.startsWith("/")) {
             warn({
               code: "V2_ACTION_INVALID_PUSH_STATE",
@@ -235,7 +240,7 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         }
 
         if (action.action === "removeState") {
-          const path = params.path;
+          const path = resolveActionPath(params);
           if (typeof path !== "string" || !path.startsWith("/")) {
             warn({
               code: "V2_ACTION_INVALID_REMOVE_STATE",
@@ -248,7 +253,7 @@ export function DynamicRendererV2({ spec, registry, fallback, onWarning }: Dynam
         }
 
         if (action.action === "validateForm") {
-          const path = params.path;
+          const path = resolveActionPath(params);
           if (typeof path !== "string" || !path.startsWith("/")) {
             warn({
               code: "V2_ACTION_INVALID_VALIDATE_FORM",

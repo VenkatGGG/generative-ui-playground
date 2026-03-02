@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DynamicValueExprV2Schema,
   GenerateRequestV2Schema,
   StreamEventV2Schema,
   UITreeSnapshotV2Schema,
@@ -49,6 +50,25 @@ describe("contracts schemas v2", () => {
     expect(result.success).toBe(false);
   });
 
+  it("supports visibility with $item, $index, and implicit AND arrays", () => {
+    const parsed = VisibilityConditionV2Schema.parse([
+      { $item: "enabled", eq: true },
+      { $index: true, lt: 3 }
+    ]);
+
+    expect(Array.isArray(parsed)).toBe(true);
+  });
+
+  it("supports conditional dynamic expressions", () => {
+    const parsed = DynamicValueExprV2Schema.parse({
+      $cond: { $state: "/flags/highlight", eq: true },
+      $then: "primary",
+      $else: "secondary"
+    });
+
+    expect(parsed).toBeTruthy();
+  });
+
   it("validates semantic fields in v2 spec", () => {
     const parsed = UISpecV2Schema.parse({
       root: "root",
@@ -61,6 +81,9 @@ describe("contracts schemas v2", () => {
           type: "Card",
           props: {},
           children: ["list"],
+          slots: {
+            actions: ["submit"]
+          },
           visible: { $state: "/form/accepted", neq: true }
         },
         list: {
@@ -84,8 +107,25 @@ describe("contracts schemas v2", () => {
         },
         row: {
           type: "Text",
-          props: { text: { $item: "label" } },
+          props: {
+            text: {
+              $cond: [{ $item: "label", neq: "" }],
+              $then: { $item: "label" },
+              $else: "Untitled"
+            }
+          },
           children: []
+        },
+        submit: {
+          type: "Button",
+          props: {
+            variant: {
+              $cond: { $state: "/form/accepted", eq: true },
+              $then: "default",
+              $else: "secondary"
+            }
+          },
+          children: ["Submit"]
         }
       }
     });

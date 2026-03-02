@@ -2,27 +2,58 @@ import type { JsonPatch } from "./types";
 
 export type SchemaVersion = "v1" | "v2";
 
+export type VisibilityComparatorV2 = {
+  eq?: unknown;
+  neq?: unknown;
+  gt?: number;
+  gte?: number;
+  lt?: number;
+  lte?: number;
+  not?: boolean;
+};
+
+export type VisibilityStateConditionV2 = {
+  $state: string;
+} & VisibilityComparatorV2;
+
+export type VisibilityItemConditionV2 = {
+  $item: string;
+} & VisibilityComparatorV2;
+
+export type VisibilityIndexConditionV2 = {
+  $index: true;
+} & VisibilityComparatorV2;
+
+export type VisibilityAndConditionV2 = {
+  $and: VisibilityConditionV2[];
+};
+
+export type VisibilityOrConditionV2 = {
+  $or: VisibilityConditionV2[];
+};
+
+export type VisibilityConditionV2 =
+  | boolean
+  | VisibilityStateConditionV2
+  | VisibilityItemConditionV2
+  | VisibilityIndexConditionV2
+  | VisibilityAndConditionV2
+  | VisibilityOrConditionV2
+  | VisibilityConditionV2[];
+
+export type DynamicConditionalExprV2 = {
+  $cond: VisibilityConditionV2 | DynamicValueExprV2;
+  $then: unknown;
+  $else: unknown;
+};
+
 export type DynamicValueExprV2 =
   | { $state: string; default?: unknown }
   | { $item: string; default?: unknown }
   | { $index: true }
   | { $bindState: string }
-  | { $bindItem: string };
-
-export type VisibilityConditionV2 =
-  | boolean
-  | {
-      $state: string;
-      eq?: unknown;
-      neq?: unknown;
-      gt?: number;
-      gte?: number;
-      lt?: number;
-      lte?: number;
-      not?: boolean;
-    }
-  | { $and: VisibilityConditionV2[] }
-  | { $or: VisibilityConditionV2[] };
+  | { $bindItem: string }
+  | DynamicConditionalExprV2;
 
 export interface RepeatConfigV2 {
   statePath: string;
@@ -40,6 +71,7 @@ export interface UISpecElementV2 {
   type: string;
   props: Record<string, unknown>;
   children: string[];
+  slots?: Record<string, string[]>;
   visible?: VisibilityConditionV2;
   repeat?: RepeatConfigV2;
   on?: Record<string, ActionBindingV2 | ActionBindingV2[]>;
@@ -50,6 +82,7 @@ export interface UIComponentNodeV2 {
   id: string;
   type: string;
   props?: Record<string, unknown>;
+  slots?: Record<string, string[]>;
   visible?: VisibilityConditionV2;
   repeat?: RepeatConfigV2;
   on?: Record<string, ActionBindingV2 | ActionBindingV2[]>;
