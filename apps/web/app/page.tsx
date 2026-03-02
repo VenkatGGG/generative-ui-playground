@@ -308,6 +308,7 @@ export default function HomePage() {
   const [revertState, setRevertState] = useState<RevertState>({ versionId: null, loading: false });
   const {
     state,
+    rawEvents,
     send: streamGenerate,
     hydrate
   } = useUIStreamV2({
@@ -325,6 +326,8 @@ export default function HomePage() {
         return "outline";
     }
   }, [status]);
+  const latestEventType = rawEvents.length > 0 ? rawEvents[rawEvents.length - 1]?.type : null;
+  const warningItems = state.warnings.slice(-4);
 
   const refreshThread = useCallback(async (threadId: string) => {
     const response = await fetch(`/api/v2/threads/${threadId}`, { method: "GET" });
@@ -461,9 +464,29 @@ export default function HomePage() {
             </header>
 
             <Card>
-              <CardContent className="flex items-center justify-between p-4">
-                <span className="text-sm font-medium">Status</span>
-                <Badge variant={statusVariant}>{status}</Badge>
+              <CardContent className="grid gap-3 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Status</span>
+                  <Badge variant={statusVariant}>{status}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline">
+                    warnings: {state.warnings.length}
+                  </Badge>
+                  <Badge variant="outline">
+                    events: {rawEvents.length}
+                  </Badge>
+                  {state.usage ? (
+                    <Badge variant="outline">
+                      tokens: {state.usage.totalTokens}
+                    </Badge>
+                  ) : null}
+                  {latestEventType ? (
+                    <Badge variant="secondary">
+                      last: {latestEventType}
+                    </Badge>
+                  ) : null}
+                </div>
               </CardContent>
             </Card>
 
@@ -500,6 +523,37 @@ export default function HomePage() {
                       ) : null}
                     </div>
                   ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="min-h-0">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Generation Diagnostics</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {state.usage ? (
+                  <p className="text-xs text-muted-foreground">
+                    Usage: prompt {state.usage.promptTokens}, completion {state.usage.completionTokens}, total{" "}
+                    {state.usage.totalTokens}
+                    {state.usage.model ? ` (${state.usage.model})` : ""}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No usage data yet.</p>
+                )}
+
+                {warningItems.length > 0 ? (
+                  warningItems.map((warning, index) => (
+                    <div
+                      key={`${warning.code}_${index}`}
+                      className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
+                    >
+                      <p className="font-medium">{warning.code}</p>
+                      <p className="text-muted-foreground">{warning.message}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">No warnings.</p>
                 )}
               </CardContent>
             </Card>
