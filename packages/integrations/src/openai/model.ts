@@ -5,10 +5,13 @@ import type {
 } from "../interfaces";
 import {
   PASS2_EXAMPLE_TREE,
-  PASS2_EXAMPLE_TREE_V2,
-  buildPass2CatalogSection,
-  buildPass2CatalogSectionV2
+  buildPass2CatalogSection
 } from "@repo/component-catalog";
+import {
+  compileCatalogPromptBlockV2,
+  compilePass2ExampleSnapshotV2,
+  compileSemanticContractBlockV2
+} from "@repo/component-catalog/compiler";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { buildComponentContextPromptSection } from "../shared/component-context-prompt";
 import {
@@ -93,10 +96,10 @@ function toPass2Prompt(input: StreamDesignInput): string {
 function toPass2PromptV2(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const contextSection = buildComponentContextPromptSection(input.componentContext);
-  const example = JSON.stringify(PASS2_EXAMPLE_TREE_V2, null, 2);
-  const catalogSection = buildPass2CatalogSectionV2();
+  const example = JSON.stringify(compilePass2ExampleSnapshotV2(), null, 2);
+  const catalogSection = compileCatalogPromptBlockV2();
   const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: true });
-  const contractSection = buildPass2ContractBlock(true);
+  const contractSection = [buildPass2ContractBlock(true), compileSemanticContractBlockV2()].join("\n");
 
   return [
     "You generate rich semantic UI tree snapshots for a React runtime with strict contract compliance.",

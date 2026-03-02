@@ -6,10 +6,14 @@ import type {
 import {
   ALLOWED_COMPONENT_TYPES,
   PASS2_EXAMPLE_TREE,
-  PASS2_EXAMPLE_TREE_V2,
-  buildPass2CatalogSectionV2,
   buildPass2CatalogSection
 } from "@repo/component-catalog";
+import {
+  compileCatalogPromptBlockV2,
+  compileGeminiStructuredOutputSchemaV2,
+  compilePass2ExampleSnapshotV2,
+  compileSemanticContractBlockV2
+} from "@repo/component-catalog/compiler";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
 import { buildComponentContextPromptSection } from "../shared/component-context-prompt";
 import {
@@ -76,55 +80,8 @@ function createGeminiNodeSchema(depth: number): Record<string, unknown> {
 
 const GEMINI_UI_COMPONENT_NODE_SCHEMA = createGeminiNodeSchema(4);
 
-function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
-  const schema: Record<string, unknown> = {
-    type: "OBJECT",
-    required: ["id", "type", "children"],
-    properties: {
-      id: { type: "STRING" },
-      type: { type: "STRING" },
-      props: { type: "OBJECT" },
-      visible: {
-        anyOf: [{ type: "BOOLEAN" }, { type: "OBJECT" }]
-      },
-      repeat: {
-        type: "OBJECT",
-        required: ["statePath"],
-        properties: {
-          statePath: { type: "STRING" },
-          key: { type: "STRING" }
-        }
-      },
-      on: { type: "OBJECT" },
-      watch: {
-        type: "OBJECT"
-      }
-    }
-  };
-
-  const childOptions: Array<Record<string, unknown>> = [{ type: "STRING" }];
-  if (depth > 1) {
-    childOptions.push(createGeminiNodeSchemaV2(depth - 1));
-  }
-
-  (schema.properties as Record<string, unknown>).children = {
-    type: "ARRAY",
-    items: childOptions.length === 1 ? childOptions[0] : { anyOf: childOptions }
-  };
-
-  return schema;
-}
-
-const GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA: Record<string, unknown> = {
-  type: "OBJECT",
-  required: ["tree"],
-  properties: {
-    state: {
-      type: "OBJECT"
-    },
-    tree: createGeminiNodeSchemaV2(3)
-  }
-};
+const GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA: Record<string, unknown> =
+  compileGeminiStructuredOutputSchemaV2(4);
 
 function buildGenerateEndpoint(baseUrl: string, model: string, apiKey: string): string {
   return `${baseUrl.replace(/\/$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -175,10 +132,10 @@ function toPass2Prompt(input: StreamDesignInput): string {
 function toPass2PromptV2(input: StreamDesignInput): string {
   const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
   const contextSection = buildComponentContextPromptSection(input.componentContext);
-  const example = JSON.stringify(PASS2_EXAMPLE_TREE_V2, null, 2);
-  const catalogSection = buildPass2CatalogSectionV2();
+  const example = JSON.stringify(compilePass2ExampleSnapshotV2(), null, 2);
+  const catalogSection = compileCatalogPromptBlockV2();
   const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: true });
-  const contractSection = buildPass2ContractBlock(true);
+  const contractSection = [buildPass2ContractBlock(true), compileSemanticContractBlockV2()].join("\n");
 
   return [
     "You generate rich semantic UI tree snapshots for a React runtime with strict contract compliance.",
