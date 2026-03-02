@@ -51,7 +51,7 @@ When `ADAPTER_MODE=real`, required env vars are:
 Gemini pass2 tuning (optional):
 
 - `GEMINI_PASS2_MAX_OUTPUT_TOKENS` (default `2048`)
-- `GEMINI_PASS2_THINKING_LEVEL` (default `LOW`, allowed `LOW|MEDIUM|HIGH`)
+- `GEMINI_PASS2_THINKING_LEVEL` (optional, allowed `LOW|MEDIUM|HIGH`)
 
 Context provider in `real` mode:
 

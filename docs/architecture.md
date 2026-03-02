@@ -48,7 +48,7 @@
 
 - Gemini pass2 output budget and thinking level are configurable:
   - `GEMINI_PASS2_MAX_OUTPUT_TOKENS` (default `2048`)
-  - `GEMINI_PASS2_THINKING_LEVEL` (default `LOW`)
+  - `GEMINI_PASS2_THINKING_LEVEL` (optional: `LOW|MEDIUM|HIGH`)
 - Direct shadcn registry default template:
   - `https://ui.shadcn.com/r/styles/new-york/{name}.json`
 - On registry misses, MCP context injects concise fallback guidance only (not raw HTTP transport errors).

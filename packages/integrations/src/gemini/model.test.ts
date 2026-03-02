@@ -74,7 +74,7 @@ describe("createGeminiGenerationModel", () => {
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
-      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
+      expect(body.generationConfig?.thinkingConfig).toBeUndefined();
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$schema");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$ref");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$defs");
@@ -129,7 +129,7 @@ describe("createGeminiGenerationModel", () => {
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
-      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
+      expect(body.generationConfig?.thinkingConfig).toBeUndefined();
       const responseSchema = body.generationConfig?.responseSchema as
         | { properties?: { tree?: { required?: string[] } } }
         | undefined;

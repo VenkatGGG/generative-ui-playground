@@ -5,7 +5,6 @@ import type {
 } from "../interfaces";
 import {
   ALLOWED_COMPONENT_TYPES,
-  ALLOWED_COMPONENT_TYPES_V2,
   PASS2_EXAMPLE_TREE,
   PASS2_EXAMPLE_TREE_V2,
   buildPass2CatalogSectionV2,
@@ -77,87 +76,17 @@ function createGeminiNodeSchema(depth: number): Record<string, unknown> {
 
 const GEMINI_UI_COMPONENT_NODE_SCHEMA = createGeminiNodeSchema(4);
 
-function createGeminiActionBindingSchema(): Record<string, unknown> {
-  return {
-    type: "OBJECT",
-    required: ["action"],
-    properties: {
-      action: {
-        type: "STRING",
-        enum: ["setState", "pushState", "removeState", "validateForm"]
-      },
-      params: {
-        type: "OBJECT"
-      }
-    }
-  };
-}
-
-function createGeminiActionBindingOrArraySchema(): Record<string, unknown> {
-  return {
-    anyOf: [
-      createGeminiActionBindingSchema(),
-      { type: "ARRAY", items: createGeminiActionBindingSchema() }
-    ]
-  };
-}
-
-function createGeminiVisibilitySchema(depth: number): Record<string, unknown> {
-  const visibilityRef: Record<string, unknown> = {
-    type: "OBJECT",
-    properties: {
-      $state: { type: "STRING" },
-      eq: {},
-      neq: {},
-      gt: { type: "NUMBER" },
-      gte: { type: "NUMBER" },
-      lt: { type: "NUMBER" },
-      lte: { type: "NUMBER" },
-      not: { type: "BOOLEAN" }
-    }
-  };
-
-  if (depth > 1) {
-    return {
-      anyOf: [
-        { type: "BOOLEAN" },
-        visibilityRef,
-        {
-          type: "OBJECT",
-          properties: {
-            $and: {
-              type: "ARRAY",
-              items: createGeminiVisibilitySchema(depth - 1)
-            }
-          }
-        },
-        {
-          type: "OBJECT",
-          properties: {
-            $or: {
-              type: "ARRAY",
-              items: createGeminiVisibilitySchema(depth - 1)
-            }
-          }
-        }
-      ]
-    };
-  }
-
-  return {
-    anyOf: [{ type: "BOOLEAN" }, visibilityRef]
-  };
-}
-
 function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
   const schema: Record<string, unknown> = {
     type: "OBJECT",
     required: ["id", "type", "children"],
     properties: {
       id: { type: "STRING" },
-      type: { type: "STRING", enum: [...ALLOWED_COMPONENT_TYPES_V2] },
+      type: { type: "STRING" },
       props: { type: "OBJECT" },
-      visible: createGeminiVisibilitySchema(2),
+      visible: {
+        anyOf: [{ type: "BOOLEAN" }, { type: "OBJECT" }]
+      },
       repeat: {
         type: "OBJECT",
         required: ["statePath"],
@@ -166,14 +95,7 @@ function createGeminiNodeSchemaV2(depth: number): Record<string, unknown> {
           key: { type: "STRING" }
         }
       },
-      on: {
-        type: "OBJECT",
-        properties: {
-          press: createGeminiActionBindingOrArraySchema(),
-          change: createGeminiActionBindingOrArraySchema(),
-          submit: createGeminiActionBindingOrArraySchema()
-        }
-      },
+      on: { type: "OBJECT" },
       watch: {
         type: "OBJECT"
       }
@@ -281,8 +203,22 @@ function toPass2PromptV2(input: StreamDesignInput): string {
 function toRequest(
   prompt: string,
   responseSchema?: Record<string, unknown>,
-  pass2Config?: { maxOutputTokens: number; thinkingLevel: GeminiThinkingLevel }
+  pass2Config?: { maxOutputTokens: number; thinkingLevel?: GeminiThinkingLevel }
 ): GeminiGenerateRequest {
+  const generationConfig: GeminiGenerateRequest["generationConfig"] = {
+    responseMimeType: "application/json"
+  };
+
+  if (responseSchema) {
+    generationConfig.responseSchema = responseSchema;
+    generationConfig.maxOutputTokens = pass2Config?.maxOutputTokens;
+    if (pass2Config?.thinkingLevel) {
+      generationConfig.thinkingConfig = {
+        thinkingLevel: pass2Config.thinkingLevel
+      };
+    }
+  }
+
   return {
     contents: [
       {
@@ -290,18 +226,7 @@ function toRequest(
         parts: [{ text: prompt }]
       }
     ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      ...(responseSchema
-        ? {
-            responseSchema,
-            maxOutputTokens: pass2Config?.maxOutputTokens,
-            thinkingConfig: {
-              thinkingLevel: pass2Config?.thinkingLevel
-            }
-          }
-        : {})
-    }
+    generationConfig
   };
 }
 
@@ -425,7 +350,7 @@ export function createGeminiGenerationModel(
   const pass1Model = options.pass1Model ?? DEFAULT_PASS1_MODEL;
   const pass2Model = options.pass2Model ?? DEFAULT_PASS2_MODEL;
   const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? 2048;
-  const pass2ThinkingLevel = options.pass2ThinkingLevel ?? "LOW";
+  const pass2ThinkingLevel = options.pass2ThinkingLevel;
   const pass2Config = {
     maxOutputTokens: pass2MaxOutputTokens,
     thinkingLevel: pass2ThinkingLevel

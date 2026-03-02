@@ -102,7 +102,7 @@ describe("runtime gemini pass2 controls", () => {
         provider: "gemini",
         options: expect.objectContaining({
           pass2MaxOutputTokens: 2048,
-          pass2ThinkingLevel: "LOW"
+          pass2ThinkingLevel: undefined
         })
       })
     );

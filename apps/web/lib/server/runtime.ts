@@ -55,12 +55,18 @@ function resolveGeminiPass2MaxOutputTokens(): number {
   return parsed;
 }
 
-function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" {
+function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" | undefined {
   const raw = process.env.GEMINI_PASS2_THINKING_LEVEL?.toUpperCase();
+  if (!raw) {
+    return undefined;
+  }
   if (raw === "MEDIUM" || raw === "HIGH") {
     return raw;
   }
-  return "LOW";
+  if (raw === "LOW") {
+    return "LOW";
+  }
+  return undefined;
 }
 
 async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
