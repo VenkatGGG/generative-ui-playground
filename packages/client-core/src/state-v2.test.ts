@@ -34,4 +34,35 @@ describe("generationReducerV2", () => {
     expect(afterPatch.spec?.elements.root).toBeDefined();
     expect(afterUsage.usage?.totalTokens).toBe(140);
   });
+
+  it("hydrates base spec so remove patches resolve against existing paths", () => {
+    const hydrated = generationReducerV2(initialGenerationStateV2, {
+      type: "hydrate",
+      spec: {
+        root: "root",
+        elements: {
+          root: {
+            type: "Card",
+            props: {},
+            children: [],
+            on: {
+              press: { action: "setState", params: { path: "/x", value: 1 } }
+            }
+          }
+        },
+        state: {}
+      }
+    });
+
+    const afterRemove = generationReducerV2(hydrated, {
+      type: "patch",
+      generationId: "g2",
+      patch: {
+        op: "remove",
+        path: "/elements/root/on"
+      }
+    });
+
+    expect(afterRemove.spec?.elements.root?.on).toBeUndefined();
+  });
 });

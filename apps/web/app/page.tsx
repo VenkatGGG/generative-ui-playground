@@ -308,9 +308,8 @@ export default function HomePage() {
     );
 
     const activeSpec = findActiveSpec(nextBundle);
-    if (activeSpec) {
-      setHydratedSpec(activeSpec);
-    }
+    setHydratedSpec(activeSpec);
+    dispatch({ type: "hydrate", spec: activeSpec });
   };
 
   useEffect(() => {
@@ -359,6 +358,7 @@ export default function HomePage() {
     }
 
     setThreadError(null);
+    dispatch({ type: "hydrate", spec: findActiveSpec(bundle) });
 
     try {
       await streamGenerateV2({

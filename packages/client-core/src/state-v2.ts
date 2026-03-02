@@ -18,6 +18,8 @@ export interface GenerationStateV2 {
   usage: GenerationUsageV2 | null;
 }
 
+export type GenerationActionV2 = StreamEventV2 | { type: "hydrate"; spec: UISpecV2 | null };
+
 export const initialGenerationStateV2: GenerationStateV2 = {
   generationId: null,
   isStreaming: false,
@@ -28,8 +30,14 @@ export const initialGenerationStateV2: GenerationStateV2 = {
   usage: null
 };
 
-export function generationReducerV2(state: GenerationStateV2, event: StreamEventV2): GenerationStateV2 {
+export function generationReducerV2(state: GenerationStateV2, event: GenerationActionV2): GenerationStateV2 {
   switch (event.type) {
+    case "hydrate": {
+      return {
+        ...state,
+        spec: event.spec
+      };
+    }
     case "status": {
       return {
         ...state,
