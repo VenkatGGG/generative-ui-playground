@@ -610,4 +610,77 @@ describe("runGenerationV2", () => {
     expect(warningCodes).not.toContain("FALLBACK_APPLIED");
     expect(warningCodes).not.toContain("V2_NO_VALID_SNAPSHOT");
   });
+
+  it("recovers valid v2 snapshot split across chunks after malformed prefix", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        const validSnapshot = JSON.stringify({
+          state: {
+            features: [
+              { id: "1", label: "Unlimited projects" },
+              { id: "2", label: "Priority support" },
+              { id: "3", label: "Team collaboration" }
+            ]
+          },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+                  { id: "desc", type: "CardDescription", children: ["For fast teams"] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "price", type: "Text", children: ["$29/mo"] },
+                  {
+                    id: "feature-list",
+                    type: "Stack",
+                    repeat: { statePath: "/features", key: "id" },
+                    children: [{ id: "feature", type: "Text", props: { text: { $item: "label" } }, children: [] }]
+                  },
+                  { id: "cta-primary", type: "Button", children: ["Start Free Trial"] },
+                  { id: "cta-secondary", type: "Button", props: { variant: "outline" }, children: ["View Docs"] }
+                ]
+              }
+            ]
+          }
+        });
+
+        yield '{ "tree": { "id": "broken", "type": "Card", "children": [ { "id": "oops" ';
+        yield validSnapshot.slice(0, Math.floor(validSnapshot.length / 2));
+        yield validSnapshot.slice(Math.floor(validSnapshot.length / 2));
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a pricing card with title, price, features and CTAs",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(eventTypes).toContain("patch");
+    expect(eventTypes).toContain("done");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+    expect(warningCodes).not.toContain("V2_NO_VALID_SNAPSHOT");
+  });
 });

@@ -351,8 +351,8 @@ export async function* runGenerationV2(
           buffer += chunk;
           const extracted = extractCompleteJsonObjects(buffer);
           buffer = extracted.remainder;
-          const recoveredFromChunk = extractRecoverableJsonObjects(chunk);
-          const candidateObjects = [...extracted.objects, ...recoveredFromChunk];
+          const recoveredFromBuffer = extractRecoverableJsonObjects(buffer);
+          const candidateObjects = [...extracted.objects, ...recoveredFromBuffer];
 
           for (const objectTextRaw of candidateObjects) {
             const objectText = objectTextRaw.trim();
