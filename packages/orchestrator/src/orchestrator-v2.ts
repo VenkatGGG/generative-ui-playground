@@ -114,6 +114,33 @@ function parseModelToolCall(input: string): ModelToolCall | null {
   }
 }
 
+function extractRecoverableJsonObjects(input: string): string[] {
+  if (!input.trim()) {
+    return [];
+  }
+
+  const recovered = new Set<string>();
+  const trimmed = input.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    recovered.add(trimmed);
+  }
+
+  const restartMarkers = ['{"tree"', '{ "tree"', '{"id"', '{ "id"', '{"tool"', '{ "tool"'];
+  for (const marker of restartMarkers) {
+    let index = input.indexOf(marker);
+    while (index >= 0) {
+      const sliced = input.slice(index);
+      const extracted = extractCompleteJsonObjects(sliced);
+      for (const objectText of extracted.objects) {
+        recovered.add(objectText.trim());
+      }
+      index = input.indexOf(marker, index + marker.length);
+    }
+  }
+
+  return Array.from(recovered);
+}
+
 function mergeMcpContexts(base: Awaited<ReturnType<MCPAdapter["fetchContext"]>>, next: Awaited<ReturnType<MCPAdapter["fetchContext"]>>) {
   const ruleMap = new Map<string, (typeof base.componentRules)[number]>();
   for (const rule of base.componentRules) {
@@ -316,6 +343,7 @@ export async function* runGenerationV2(
       let acceptedOnAttempt = false;
       let observedObjectOnAttempt = false;
       let buffer = "";
+      const processedObjectTexts = new Set<string>();
 
       try {
         for await (const chunk of streamSource) {
@@ -323,8 +351,15 @@ export async function* runGenerationV2(
           buffer += chunk;
           const extracted = extractCompleteJsonObjects(buffer);
           buffer = extracted.remainder;
+          const recoveredFromChunk = extractRecoverableJsonObjects(chunk);
+          const candidateObjects = [...extracted.objects, ...recoveredFromChunk];
 
-          for (const objectText of extracted.objects) {
+          for (const objectTextRaw of candidateObjects) {
+            const objectText = objectTextRaw.trim();
+            if (!objectText || processedObjectTexts.has(objectText)) {
+              continue;
+            }
+            processedObjectTexts.add(objectText);
             observedObjectOnAttempt = true;
             const toolCall = parseModelToolCall(objectText);
             if (toolCall) {
