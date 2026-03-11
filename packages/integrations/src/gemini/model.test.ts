@@ -139,7 +139,7 @@ describe("createGeminiGenerationModel", () => {
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
-      expect(body.generationConfig?.thinkingConfig).toBeUndefined();
+      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$schema");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$ref");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$defs");
@@ -194,7 +194,7 @@ describe("createGeminiGenerationModel", () => {
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
       expect(body.generationConfig?.maxOutputTokens).toBe(2048);
-      expect(body.generationConfig?.thinkingConfig).toBeUndefined();
+      expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       const responseSchema = body.generationConfig?.responseSchema as
         | { properties?: { tree?: { required?: string[]; properties?: Record<string, unknown> } } }
         | undefined;
@@ -337,5 +337,58 @@ describe("createGeminiGenerationModel", () => {
     expect(callCount).toBe(2);
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toContain('"tree"');
+  });
+
+  it("retries pass2 with a larger output budget when gemini stops at max tokens", async () => {
+    const truncatedPayload = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"{\\"tree\\":{\\"id\\":\\"root\\""}]}}]}',
+      "",
+      'data: {"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"MAX_TOKENS"}]}',
+      ""
+    ].join("\n");
+    const completePayload = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"{\\"tree\\":{\\"id\\":\\"root\\",\\"type\\":\\"Card\\",\\"children\\":[]}}"}]}}]}',
+      "",
+      'data: {"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP"}]}',
+      ""
+    ].join("\n");
+
+    const outputBudgets: number[] = [];
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      callCount += 1;
+      const body = JSON.parse(String(init?.body)) as {
+        generationConfig?: { maxOutputTokens?: number };
+      };
+      outputBudgets.push(body.generationConfig?.maxOutputTokens ?? 0);
+
+      return new Response(callCount === 1 ? truncatedPayload : completePayload, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      });
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      fetchImpl
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of adapter.streamDesignV2!({
+      prompt: "build a pricing card",
+      previousSpec: null,
+      componentContext: {
+        contextVersion: "ctx-v2",
+        componentRules: []
+      }
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(callCount).toBe(2);
+    expect(outputBudgets).toEqual([2048, 4096]);
+    expect(chunks).toEqual(['{"tree":{"id":"root","type":"Card","children":[]}}']);
   });
 });

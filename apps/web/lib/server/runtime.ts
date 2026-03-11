@@ -58,7 +58,7 @@ function resolveGeminiPass2MaxOutputTokens(): number {
 function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" | undefined {
   const raw = process.env.GEMINI_PASS2_THINKING_LEVEL?.toUpperCase();
   if (!raw) {
-    return undefined;
+    return "LOW";
   }
   if (raw === "MEDIUM" || raw === "HIGH") {
     return raw;

@@ -25,9 +25,11 @@ import { parseSseData } from "../shared/sse";
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
 const DEFAULT_PASS2_MODEL = "gemini-2.5-pro";
+const DEFAULT_PASS2_THINKING_LEVEL: GeminiThinkingLevel = "LOW";
 const STREAM_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const STREAM_MAX_ATTEMPTS = 3;
 const STREAM_RETRY_BASE_DELAY_MS = 600;
+const STREAM_MAX_OUTPUT_TOKENS_CAP = 8192;
 
 type FetchLike = typeof fetch;
 export type GeminiThinkingLevel = "LOW" | "MEDIUM" | "HIGH";
@@ -252,6 +254,25 @@ function extractTextFromGeminiPayload(payload: unknown): string {
   return texts.join("");
 }
 
+function extractFinishReasonFromGeminiPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const candidates = (payload as { candidates?: unknown }).candidates;
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  const firstCandidate = candidates[0];
+  if (!firstCandidate || typeof firstCandidate !== "object") {
+    return null;
+  }
+
+  const finishReason = (firstCandidate as { finishReason?: unknown }).finishReason;
+  return typeof finishReason === "string" ? finishReason : null;
+}
+
 async function callGemini(
   fetchImpl: FetchLike,
   endpoint: string,
@@ -296,6 +317,7 @@ async function* streamGemini(
   endpoint: string,
   request: GeminiGenerateRequest
 ): AsyncGenerator<string> {
+  let currentRequest = request;
   for (let attempt = 1; attempt <= STREAM_MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetchImpl(endpoint, {
@@ -303,7 +325,7 @@ async function* streamGemini(
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(currentRequest)
       });
 
       if (!response.ok) {
@@ -323,6 +345,8 @@ async function* streamGemini(
         return;
       }
 
+      const bufferedChunks: string[] = [];
+      let finishReason: string | null = null;
       for await (const data of parseSseData(response.body)) {
         if (data === "[DONE]") {
           continue;
@@ -333,10 +357,34 @@ async function* streamGemini(
           continue;
         }
 
+        finishReason = extractFinishReasonFromGeminiPayload(parsed) ?? finishReason;
         const chunk = extractTextFromGeminiPayload(parsed);
         if (chunk.length > 0) {
-          yield chunk;
+          bufferedChunks.push(chunk);
         }
+      }
+
+      const currentMaxOutputTokens = currentRequest.generationConfig?.maxOutputTokens;
+      const canRetryForMaxTokens =
+        finishReason === "MAX_TOKENS" &&
+        attempt < STREAM_MAX_ATTEMPTS &&
+        currentRequest.generationConfig?.responseSchema &&
+        typeof currentMaxOutputTokens === "number" &&
+        currentMaxOutputTokens < STREAM_MAX_OUTPUT_TOKENS_CAP;
+
+      if (canRetryForMaxTokens) {
+        currentRequest = {
+          ...currentRequest,
+          generationConfig: {
+            ...currentRequest.generationConfig,
+            maxOutputTokens: Math.min(currentMaxOutputTokens * 2, STREAM_MAX_OUTPUT_TOKENS_CAP)
+          }
+        };
+        continue;
+      }
+
+      for (const chunk of bufferedChunks) {
+        yield chunk;
       }
       return;
     } catch (error) {
@@ -359,7 +407,7 @@ export function createGeminiGenerationModel(
   const pass1Model = options.pass1Model ?? DEFAULT_PASS1_MODEL;
   const pass2Model = options.pass2Model ?? DEFAULT_PASS2_MODEL;
   const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? 2048;
-  const pass2ThinkingLevel = options.pass2ThinkingLevel;
+  const pass2ThinkingLevel = options.pass2ThinkingLevel ?? DEFAULT_PASS2_THINKING_LEVEL;
   const pass2Config = {
     maxOutputTokens: pass2MaxOutputTokens,
     thinkingLevel: pass2ThinkingLevel
