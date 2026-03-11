@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { UISpecV2 } from "@repo/contracts";
-import { buildConstraintSetV2, validateConstraintSetV2 } from "./constraints-v2";
+import {
+  buildConstraintSetV2,
+  isUsableSpecForPromptPackV2,
+  validateConstraintSetV2
+} from "./constraints-v2";
 
 describe("constraints-v2", () => {
   it("flags missing card structure for card-like prompts", () => {
@@ -119,5 +123,50 @@ describe("constraints-v2", () => {
 
     const violations = validateConstraintSetV2(spec, constraints);
     expect(violations).toEqual([]);
+  });
+
+  it("treats prompt-pack-complete pricing trees as usable even below generic floor", () => {
+    const spec: UISpecV2 = {
+      root: "root",
+      elements: {
+        root: {
+          type: "Card",
+          props: {},
+          children: ["header", "content"]
+        },
+        header: {
+          type: "CardHeader",
+          props: {},
+          children: ["title", "desc"]
+        },
+        title: {
+          type: "CardTitle",
+          props: {},
+          children: []
+        },
+        desc: {
+          type: "CardDescription",
+          props: {},
+          children: []
+        },
+        content: {
+          type: "CardContent",
+          props: {},
+          children: ["price", "cta"]
+        },
+        price: {
+          type: "Text",
+          props: { text: "$29/mo" },
+          children: []
+        },
+        cta: {
+          type: "Button",
+          props: {},
+          children: []
+        }
+      }
+    };
+
+    expect(isUsableSpecForPromptPackV2(spec, "Create a pricing card for Pro Plan")).toBe(true);
   });
 });

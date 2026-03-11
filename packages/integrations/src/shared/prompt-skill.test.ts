@@ -29,6 +29,7 @@ describe("prompt skill layer", () => {
 
     expect(section).toContain("PROMPT PACK: pricing-card");
     expect(section).toContain("GOOD_EXAMPLE_1");
+    expect(section).toContain("GOOD_EXAMPLE_3");
     expect(section).toContain("BAD_EXAMPLE_REJECT");
     expect(section).toContain("ANTI-SKELETON");
   });
@@ -42,6 +43,7 @@ describe("prompt skill layer", () => {
     expect(retryPrompt).toContain("Retry attempt 2");
     expect(retryPrompt).toContain("Detected prompt pack: pricing-card");
     expect(retryPrompt).toContain("Repair template:");
+    expect(retryPrompt).toContain("Alternate valid example:");
     expect(retryPrompt).toContain("V2_INVALID_VISIBLE_EXPRESSION");
     expect(retryPrompt).toContain("exactly one complete valid JSON snapshot");
 
@@ -50,6 +52,7 @@ describe("prompt skill layer", () => {
     expect(contractV1).toContain("UIComponentNode");
     expect(contractV2).toContain("UIComponentNodeV2");
     expect(contractV2).toContain("Output exactly one JSON object");
+    expect(contractV2).toContain("Do not output partial prefixes");
     expect(contractV2).not.toContain("Output newline-delimited JSON objects only.");
   });
 

@@ -6,10 +6,68 @@ import {
   isAllowedComponentTypeV2
 } from "@repo/component-catalog";
 import type { ExtractComponentsResult } from "../interfaces";
+import { detectPromptPack } from "./prompt-skill";
 
 const EXPLICIT_COMPONENT_TYPES = Array.from(
   new Set([...ALLOWED_COMPONENT_TYPES, ...ALLOWED_COMPONENT_TYPES_V2])
 ).sort((left, right) => right.length - left.length);
+const PACK_COMPONENT_ALLOWLISTS = {
+  "pricing-card": new Set([
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardContent",
+    "CardFooter",
+    "Text",
+    "Button",
+    "Badge",
+    "Stack",
+    "Separator"
+  ]),
+  dashboard: new Set([
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardContent",
+    "CardFooter",
+    "Text",
+    "Button",
+    "Badge",
+    "Stack",
+    "Separator"
+  ]),
+  form: new Set([
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardContent",
+    "CardFooter",
+    "Text",
+    "Button",
+    "Input",
+    "Textarea",
+    "Checkbox",
+    "Select",
+    "Stack",
+    "Separator"
+  ]),
+  hero: new Set([
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardContent",
+    "CardFooter",
+    "Text",
+    "Button",
+    "Badge",
+    "Stack",
+    "Separator"
+  ])
+} as const;
 
 function canonicalizeRequestedComponents(components: string[]): string[] {
   const normalized = components
@@ -30,6 +88,22 @@ export function extractExplicitPromptComponents(prompt: string): string[] {
     .map((entry) => entry.componentType);
 
   return canonicalizeRequestedComponents(hits);
+}
+
+function curateComponentsForPrompt(components: string[], prompt?: string): string[] {
+  if (!prompt) {
+    return components;
+  }
+
+  const pack = detectPromptPack(prompt);
+  if (pack === "generic") {
+    return components;
+  }
+
+  const allowlist = PACK_COMPONENT_ALLOWLISTS[pack];
+  const explicit = new Set(extractExplicitPromptComponents(prompt));
+  const curated = components.filter((component) => allowlist.has(component) || explicit.has(component));
+  return curated.length > 0 ? curated : components;
 }
 
 export function normalizeExtractComponentsResult(
@@ -53,10 +127,13 @@ export function normalizeExtractComponentsResult(
   const parsedComponents = Array.isArray(record.components)
     ? record.components.filter((item): item is string => typeof item === "string")
     : [];
-  const components = canonicalizeRequestedComponents([
-    ...parsedComponents,
-    ...(prompt ? extractExplicitPromptComponents(prompt) : [])
-  ]);
+  const components = curateComponentsForPrompt(
+    canonicalizeRequestedComponents([
+      ...parsedComponents,
+      ...(prompt ? extractExplicitPromptComponents(prompt) : [])
+    ]),
+    prompt
+  );
 
   const intentType = record.intentType === "modify" ? "modify" : "new";
   const rawConfidence = typeof record.confidence === "number" ? record.confidence : 0;

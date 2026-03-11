@@ -683,4 +683,153 @@ describe("runGenerationV2", () => {
     expect(warningCodes).not.toContain("FALLBACK_APPLIED");
     expect(warningCodes).not.toContain("V2_NO_VALID_SNAPSHOT");
   });
+
+  it("auto-fixes flat pricing trees into valid card sections without fallback", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        yield JSON.stringify({
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+              { id: "desc", type: "CardDescription", children: ["For startups"] },
+              { id: "price", type: "Text", children: ["$29/mo"] },
+              { id: "cta-primary", type: "Button", children: ["Start Free Trial"] },
+              { id: "cta-secondary", type: "Button", props: { variant: "outline" }, children: ["View Docs"] }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a pricing card with title, price, features and CTAs",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(eventTypes).toContain("patch");
+    expect(eventTypes).toContain("done");
+    expect(warningCodes).toContain("V2_PACK_AUTOFIX_APPLIED");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+  });
+
+  it("accepts usable pricing trees below the size floor", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        yield JSON.stringify({
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+                  { id: "desc", type: "CardDescription", children: ["For startups"] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "price", type: "Text", children: ["$29/mo"] },
+                  { id: "cta", type: "Button", children: ["Start Free Trial"] }
+                ]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a pricing card for Pro Plan with a CTA",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(warningCodes).not.toContain("V2_SPARSE_OUTPUT");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+  });
+
+  it("coerces missing leaf children and validates the recovered snapshot", async () => {
+    const deps = createDeps();
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        yield JSON.stringify({
+          state: {
+            form: { email: "" }
+          },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [{ id: "title", type: "CardTitle", children: ["Join"] }]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "email", type: "Input", props: { value: { $bindState: "/form/email" } } },
+                  { id: "submit", type: "Button", children: ["Continue"] }
+                ]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a signup form with email input and submit button",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(eventTypes).toContain("done");
+    expect(warningCodes).not.toContain("V2_NO_VALID_SNAPSHOT");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+  });
 });

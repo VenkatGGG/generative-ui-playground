@@ -3,6 +3,7 @@ import {
   UITreeSnapshotV2Schema,
   type GenerateRequestV2,
   type StreamEventV2,
+  type UIComponentNodeV2,
   type UITreeSnapshotV2,
   type UISpecV2
 } from "@repo/contracts";
@@ -24,7 +25,11 @@ import {
 } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
-import { buildConstraintSetV2, validateConstraintSetV2 } from "./constraints-v2";
+import {
+  buildConstraintSetV2,
+  isUsableSpecForPromptPackV2,
+  validateConstraintSetV2
+} from "./constraints-v2";
 
 export interface OrchestratorDepsV2 {
   model: GenerationModelAdapter;
@@ -33,6 +38,7 @@ export interface OrchestratorDepsV2 {
 }
 
 const MAX_PASS2_ATTEMPTS = 3;
+const RECOVERY_RESTART_MARKERS = ['{"state"', '{ "state"', '{"tree"', '{ "tree"', '{"id"', '{ "id"', "```json", "```"];
 
 interface ModelToolCall {
   tool: "mcp.fetchContext";
@@ -67,34 +73,106 @@ function buildStructuralSignature(spec: UISpecV2): string {
 }
 
 function parseCandidateSnapshotV2(input: string): UITreeSnapshotV2 | null {
-  try {
-    const parsed = JSON.parse(input) as unknown;
-    const snapshotResult = UITreeSnapshotV2Schema.safeParse(parsed);
-    if (snapshotResult.success) {
-      return snapshotResult.data as UITreeSnapshotV2;
+  const queue = [input];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const candidate = sanitizeJsonLikeText(queue.shift() ?? "");
+    if (!candidate || visited.has(candidate)) {
+      continue;
+    }
+    visited.add(candidate);
+
+    const parsed = safeParseJsonCandidate(candidate);
+    if (parsed) {
+      return parsed;
     }
 
-    // Graceful compatibility: accept raw node snapshots and wrap into { tree }.
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as { id?: unknown }).id === "string" &&
-      typeof (parsed as { type?: unknown }).type === "string"
-    ) {
-      const wrapped = UITreeSnapshotV2Schema.safeParse({ tree: parsed });
-      return wrapped.success ? (wrapped.data as UITreeSnapshotV2) : null;
+    for (const recovered of extractRecoverableJsonObjects(candidate)) {
+      if (!visited.has(recovered)) {
+        queue.push(recovered);
+      }
     }
+  }
 
-    return null;
-  } catch {
+  return null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function coerceNodeV2(input: unknown): UIComponentNodeV2 | null {
+  if (!isPlainObject(input)) {
     return null;
   }
+
+  if (typeof input.id !== "string" || typeof input.type !== "string") {
+    return null;
+  }
+
+  const children: UIComponentNodeV2["children"] = [];
+  if (Array.isArray(input.children)) {
+    for (const child of input.children) {
+      if (typeof child === "string") {
+        children.push(child);
+        continue;
+      }
+      const coercedChild = coerceNodeV2(child);
+      if (coercedChild) {
+        children.push(coercedChild);
+      }
+    }
+  }
+
+  const slots = isPlainObject(input.slots)
+    ? Object.fromEntries(
+        Object.entries(input.slots)
+          .filter(([, value]) => Array.isArray(value))
+          .map(([name, value]) => [
+            name,
+            (value as unknown[]).filter((entry): entry is string => typeof entry === "string")
+          ])
+      )
+    : undefined;
+  const repeat =
+    isPlainObject(input.repeat) && typeof input.repeat.statePath === "string"
+      ? (input.repeat as unknown as UIComponentNodeV2["repeat"])
+      : undefined;
+
+  return {
+    id: input.id,
+    type: input.type,
+    props: isPlainObject(input.props) ? input.props : {},
+    children,
+    ...(slots && Object.keys(slots).length > 0 ? { slots } : {}),
+    ...(input.visible !== null && input.visible !== undefined ? { visible: input.visible as UIComponentNodeV2["visible"] } : {}),
+    ...(repeat ? { repeat } : {}),
+    ...(isPlainObject(input.on) ? { on: input.on as UIComponentNodeV2["on"] } : {}),
+    ...(isPlainObject(input.watch) ? { watch: input.watch as UIComponentNodeV2["watch"] } : {})
+  };
+}
+
+function coerceSnapshotV2(input: unknown): UITreeSnapshotV2 | null {
+  if (!isPlainObject(input)) {
+    return null;
+  }
+
+  const maybeTree = isPlainObject(input.tree) ? input.tree : input;
+  const tree = coerceNodeV2(maybeTree);
+  if (!tree) {
+    return null;
+  }
+
+  return {
+    ...(isPlainObject(input.state) ? { state: input.state } : {}),
+    tree
+  };
 }
 
 function parseModelToolCall(input: string): ModelToolCall | null {
   try {
-    const parsed = JSON.parse(input) as unknown;
+    const parsed = JSON.parse(sanitizeJsonLikeText(input)) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
@@ -117,30 +195,84 @@ function parseModelToolCall(input: string): ModelToolCall | null {
 }
 
 function extractRecoverableJsonObjects(input: string): string[] {
-  if (!input.trim()) {
+  const sanitized = sanitizeJsonLikeText(input);
+  if (!sanitized) {
     return [];
   }
 
   const recovered = new Set<string>();
-  const trimmed = input.trim();
+  const trimmed = sanitized.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     recovered.add(trimmed);
   }
 
-  const restartMarkers = ['{"tree"', '{ "tree"', '{"id"', '{ "id"', '{"tool"', '{ "tool"'];
+  const restartMarkers = [...RECOVERY_RESTART_MARKERS, '{"tool"', '{ "tool"'];
   for (const marker of restartMarkers) {
-    let index = input.indexOf(marker);
+    let index = sanitized.indexOf(marker);
     while (index >= 0) {
-      const sliced = input.slice(index);
+      const sliced = sanitized.slice(index);
       const extracted = extractCompleteJsonObjects(sliced);
       for (const objectText of extracted.objects) {
-        recovered.add(objectText.trim());
+        const clean = sanitizeJsonLikeText(objectText);
+        if (clean) {
+          recovered.add(clean);
+        }
       }
-      index = input.indexOf(marker, index + marker.length);
+      index = sanitized.indexOf(marker, index + marker.length);
     }
   }
 
   return Array.from(recovered);
+}
+
+function sanitizeJsonLikeText(input: string): string {
+  let sanitized = input.trim();
+  if (!sanitized) {
+    return "";
+  }
+
+  sanitized = sanitized.replace(/^assistant:\s*/i, "").trim();
+  sanitized = sanitized.replace(/^```json\s*/i, "").trim();
+  sanitized = sanitized.replace(/^```\s*/i, "").trim();
+  sanitized = sanitized.replace(/\s*```$/i, "").trim();
+
+  const firstBraceIndex = sanitized.indexOf("{");
+  if (firstBraceIndex > 0) {
+    sanitized = sanitized.slice(firstBraceIndex).trim();
+  }
+
+  return sanitized;
+}
+
+function safeParseJsonCandidate(input: string): UITreeSnapshotV2 | null {
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    const snapshotResult = UITreeSnapshotV2Schema.safeParse(parsed);
+    if (snapshotResult.success) {
+      return snapshotResult.data as UITreeSnapshotV2;
+    }
+
+    const coercedSnapshot = coerceSnapshotV2(parsed);
+    if (coercedSnapshot) {
+      const coercedResult = UITreeSnapshotV2Schema.safeParse(coercedSnapshot);
+      return coercedResult.success ? (coercedResult.data as UITreeSnapshotV2) : coercedSnapshot;
+    }
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { id?: unknown }).id === "string" &&
+      typeof (parsed as { type?: unknown }).type === "string"
+    ) {
+      const wrapped = UITreeSnapshotV2Schema.safeParse({ tree: parsed });
+      return wrapped.success ? (wrapped.data as UITreeSnapshotV2) : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function mergeMcpContexts(base: Awaited<ReturnType<MCPAdapter["fetchContext"]>>, next: Awaited<ReturnType<MCPAdapter["fetchContext"]>>) {
@@ -486,6 +618,127 @@ function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
   }
 }
 
+function cloneSpecV2(spec: UISpecV2): UISpecV2 {
+  return {
+    root: spec.root,
+    elements: Object.fromEntries(
+      Object.entries(spec.elements).map(([id, element]) => [
+        id,
+        {
+          ...element,
+          props: { ...element.props },
+          children: [...element.children],
+          ...(element.slots ? { slots: Object.fromEntries(Object.entries(element.slots).map(([name, ids]) => [name, [...ids]])) } : {}),
+          ...(element.repeat ? { repeat: { ...element.repeat } } : {}),
+          ...(element.on ? { on: { ...element.on } } : {}),
+          ...(element.watch ? { watch: { ...element.watch } } : {})
+        }
+      ])
+    ),
+    ...(spec.state !== undefined ? { state: spec.state } : {})
+  };
+}
+
+function createAutoElementId(spec: UISpecV2, base: string): string {
+  let index = 1;
+  let candidate = `auto_${base}`;
+  while (spec.elements[candidate]) {
+    candidate = `auto_${base}_${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function autoFixPackSpecV2(spec: UISpecV2, prompt: string): { spec: UISpecV2; fixes: string[] } {
+  const pack = detectPromptPack(prompt);
+  const root = spec.elements[spec.root];
+  if (!root || root.type !== "Card") {
+    return { spec, fixes: [] };
+  }
+
+  const sectionTypes = new Set(["CardHeader", "CardContent", "CardFooter"]);
+  const headerCandidateTypes = new Set(["CardTitle", "CardDescription", "Badge"]);
+  const shouldPreferFooter = pack === "pricing-card" || pack === "form" || pack === "dashboard";
+
+  const fixed = cloneSpecV2(spec);
+  const fixedRoot = fixed.elements[fixed.root];
+  if (!fixedRoot) {
+    return { spec, fixes: [] };
+  }
+  const rootChildren = [...fixedRoot.children];
+  const looseChildren = rootChildren.filter((id) => !sectionTypes.has(fixed.elements[id]?.type ?? ""));
+  const fixes: string[] = [];
+
+  const existingHeaders = rootChildren.filter((id) => fixed.elements[id]?.type === "CardHeader");
+  const existingContents = rootChildren.filter((id) => fixed.elements[id]?.type === "CardContent");
+  const existingFooters = rootChildren.filter((id) => fixed.elements[id]?.type === "CardFooter");
+
+  const headerCandidates = existingHeaders.length === 0
+    ? looseChildren.filter((id) => headerCandidateTypes.has(fixed.elements[id]?.type ?? ""))
+    : [];
+
+  const footerCandidates = shouldPreferFooter && existingFooters.length === 0
+    ? looseChildren.filter((id) => fixed.elements[id]?.type === "Button")
+    : [];
+
+  const movedIds = new Set<string>([...headerCandidates, ...footerCandidates]);
+  const contentCandidates = existingContents.length === 0
+    ? looseChildren.filter((id) => !movedIds.has(id))
+    : [];
+
+  let newHeaderId: string | null = null;
+  let newContentId: string | null = null;
+  let newFooterId: string | null = null;
+
+  if (headerCandidates.length > 0) {
+    newHeaderId = createAutoElementId(fixed, "header");
+    fixed.elements[newHeaderId] = {
+      type: "CardHeader",
+      props: {},
+      children: headerCandidates
+    };
+    fixes.push(`Wrapped ${headerCandidates.length} direct root node(s) into CardHeader.`);
+  }
+
+  if (contentCandidates.length > 0) {
+    newContentId = createAutoElementId(fixed, "content");
+    fixed.elements[newContentId] = {
+      type: "CardContent",
+      props: {},
+      children: contentCandidates
+    };
+    fixes.push(`Wrapped ${contentCandidates.length} direct root node(s) into CardContent.`);
+  }
+
+  if (footerCandidates.length > 0) {
+    newFooterId = createAutoElementId(fixed, "footer");
+    fixed.elements[newFooterId] = {
+      type: "CardFooter",
+      props: {},
+      children: footerCandidates
+    };
+    fixes.push(`Wrapped ${footerCandidates.length} direct root button(s) into CardFooter.`);
+  }
+
+  if (fixes.length === 0) {
+    return { spec, fixes: [] };
+  }
+
+  fixedRoot.children = [
+    ...existingHeaders,
+    ...(newHeaderId ? [newHeaderId] : []),
+    ...existingContents,
+    ...(newContentId ? [newContentId] : []),
+    ...existingFooters,
+    ...(newFooterId ? [newFooterId] : [])
+  ];
+
+  return {
+    spec: fixed,
+    fixes
+  };
+}
+
 async function recordFailureSafely(
   deps: OrchestratorDepsV2,
   request: GenerateRequestV2,
@@ -663,6 +916,7 @@ export async function* runGenerationV2(
             sawAnyCandidate = true;
             const initialCandidateSpec = normalizeTreeToSpecV2(snapshot);
             let candidateSpec = initialCandidateSpec;
+            let usedStructuralAutofix = false;
             let structuralSchemaIssues = validateStructuralSpecV2(candidateSpec).issues.map((issue) => ({
               code: issue.code,
               message: issue.message
@@ -674,6 +928,7 @@ export async function* runGenerationV2(
                 const fixedStructural = validateStructuralSpecV2(fixed.spec);
                 if (fixedStructural.valid) {
                   candidateSpec = fixed.spec;
+                  usedStructuralAutofix = true;
                   structuralSchemaIssues = [];
                   const warning = {
                     type: "warning" as const,
@@ -700,6 +955,19 @@ export async function* runGenerationV2(
               }
             }
 
+            const packFix = autoFixPackSpecV2(candidateSpec, request.prompt);
+            if (packFix.fixes.length > 0) {
+              candidateSpec = packFix.spec;
+              const warning = {
+                type: "warning" as const,
+                generationId,
+                code: "V2_PACK_AUTOFIX_APPLIED",
+                message: `Applied prompt-pack auto-fix before semantic validation: ${packFix.fixes.join(" ")}`
+              };
+              warnings.push({ code: warning.code, message: warning.message });
+              yield warning;
+            }
+
             const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
             const semanticIssues = validation.valid
               ? []
@@ -708,8 +976,9 @@ export async function* runGenerationV2(
               code: issue.code,
               message: issue.message
             }));
+            const isUsableCandidate = isUsableSpecForPromptPackV2(candidateSpec, request.prompt);
             const sparseIssues =
-              Object.keys(candidateSpec.elements).length < minimumElementFloor
+              Object.keys(candidateSpec.elements).length < minimumElementFloor && !isUsableCandidate
                 ? [
                     {
                       code: "V2_SPARSE_OUTPUT",
@@ -763,7 +1032,8 @@ export async function* runGenerationV2(
             canonicalSpec = candidateSpec;
             acceptedOnAttempt = true;
             acceptedCandidate = true;
-            acceptedSnapshotForPersistence = snapshot;
+            acceptedSnapshotForPersistence =
+              usedStructuralAutofix || packFix.fixes.length > 0 ? null : snapshot;
           }
         }
       } catch (error) {

@@ -41,4 +41,15 @@ describe("normalizeExtractComponentsResult", () => {
 
     expect(components).toEqual(["CardHeader", "CardTitle", "Input", "Button"]);
   });
+
+  it("drops pass1 component noise that conflicts with the detected prompt pack", () => {
+    const result = normalizeExtractComponentsResult(
+      {
+        components: ["Card", "Button", "Input", "Textarea", "CardHeader", "CardContent"]
+      },
+      "Create a premium pricing card for Pro Plan with two CTA buttons"
+    );
+
+    expect(result.components).toEqual(["Card", "Button", "CardHeader", "CardContent"]);
+  });
 });

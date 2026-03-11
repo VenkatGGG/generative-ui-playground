@@ -177,7 +177,13 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         },
         {
-          state: { showSecondary: true },
+          state: {
+            features: [
+              { id: "f1", label: "Unlimited projects" },
+              { id: "f2", label: "Priority support" },
+              { id: "f3", label: "Team collaboration" }
+            ]
+          },
           tree: {
             id: "root",
             type: "Card",
@@ -185,19 +191,74 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
               {
                 id: "header",
                 type: "CardHeader",
-                children: [{ id: "title", type: "CardTitle", children: ["Business Plan"] }]
+                children: [
+                  { id: "badge", type: "Badge", props: { variant: "secondary" }, children: ["Popular"] },
+                  { id: "title", type: "CardTitle", children: ["Business Plan"] },
+                  { id: "desc", type: "CardDescription", children: ["For scaling teams with multiple collaborators."] }
+                ]
               },
               {
                 id: "content",
                 type: "CardContent",
                 children: [
-                  { id: "cta1", type: "Button", children: ["Book Demo"] },
                   {
-                    id: "cta2",
+                    id: "priceStack",
+                    type: "Stack",
+                    props: { direction: "vertical", gap: "gap-1" },
+                    children: [
+                      { id: "price", type: "Text", children: ["$79/mo"] },
+                      { id: "note", type: "Text", children: ["Billed monthly"] }
+                    ]
+                  },
+                  {
+                    id: "features",
+                    type: "Stack",
+                    repeat: { statePath: "/features", key: "id" },
+                    children: [{ id: "feature", type: "Text", props: { text: { $item: "label" } }, children: [] }]
+                  }
+                ]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [
+                  { id: "cta1", type: "Button", children: ["Start Trial"] },
+                  { id: "cta2", type: "Button", props: { variant: "outline" }, children: ["View Docs"] }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          state: { showAnnualCta: true },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Growth Plan"] },
+                  { id: "desc", type: "CardDescription", children: ["Flexible for teams that need more runway."] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [{ id: "price", type: "Text", children: ["$49/mo"] }]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [
+                  { id: "monthly", type: "Button", children: ["Choose Monthly"] },
+                  {
+                    id: "annual",
                     type: "Button",
-                    visible: { $state: "/showSecondary", eq: true },
+                    visible: { $state: "/showAnnualCta", eq: true },
                     props: { variant: "outline" },
-                    children: ["Learn More"]
+                    children: ["See Annual Savings"]
                   }
                 ]
               }
@@ -266,6 +327,14 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
             type: "Card",
             children: [
               {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Revenue Dashboard"] },
+                  { id: "desc", type: "CardDescription", children: ["Weekly performance overview."] }
+                ]
+              },
+              {
                 id: "content",
                 type: "CardContent",
                 children: [
@@ -284,17 +353,83 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         },
         {
-          state: { showActions: true },
+          state: {
+            metrics: [
+              { id: "m1", label: "MRR", value: "$42k" },
+              { id: "m2", label: "Active Users", value: "18.4k" }
+            ],
+            showActions: true
+          },
           tree: {
             id: "root",
             type: "Card",
             children: [
-              { id: "title", type: "CardTitle", children: ["Operations"] },
               {
-                id: "refresh",
-                type: "Button",
-                visible: { $state: "/showActions", eq: true },
-                children: ["Refresh data"]
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Operations"] },
+                  { id: "desc", type: "CardDescription", children: ["Track the most important metrics in one place."] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  {
+                    id: "rows",
+                    type: "Stack",
+                    repeat: { statePath: "/metrics", key: "id" },
+                    children: [
+                      { id: "metricLabel", type: "Text", props: { text: { $item: "label" } }, children: [] },
+                      { id: "metricValue", type: "Text", props: { text: { $item: "value" } }, children: [] }
+                    ]
+                  }
+                ]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [
+                  {
+                    id: "refresh",
+                    type: "Button",
+                    visible: { $state: "/showActions", eq: true },
+                    children: ["Refresh data"]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          state: { showSecondary: false },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [{ id: "title", type: "CardTitle", children: ["Growth Metrics"] }]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [{ id: "summary", type: "Text", children: ["MRR is up 12% week over week."] }]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [
+                  {
+                    id: "secondary",
+                    type: "Button",
+                    visible: { $state: "/showSecondary", eq: true },
+                    props: { variant: "outline" },
+                    children: ["Open drilldown"]
+                  }
+                ]
               }
             ]
           }
@@ -359,6 +494,14 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
             type: "Card",
             children: [
               {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Join the waitlist"] },
+                  { id: "desc", type: "CardDescription", children: ["Get launch updates and product news."] }
+                ]
+              },
+              {
                 id: "content",
                 type: "CardContent",
                 children: [
@@ -381,22 +524,86 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
           }
         },
         {
-          state: { form: { role: "dev" } },
+          state: { form: { role: "dev", message: "" } },
           tree: {
             id: "root",
             type: "Card",
             children: [
               {
-                id: "role",
-                type: "Select",
-                props: {
-                  options: [
-                    { label: "Developer", value: "dev" },
-                    { label: "Designer", value: "design" }
-                  ],
-                  value: { $bindState: "/form/role" }
-                },
-                children: []
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Request access"] },
+                  { id: "desc", type: "CardDescription", children: ["Tell us more about your workflow."] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  {
+                    id: "role",
+                    type: "Select",
+                    props: {
+                      options: [
+                        { label: "Developer", value: "dev" },
+                        { label: "Designer", value: "design" }
+                      ],
+                      value: { $bindState: "/form/role" }
+                    },
+                    children: []
+                  },
+                  {
+                    id: "message",
+                    type: "Textarea",
+                    props: { value: { $bindState: "/form/message" }, placeholder: "How will you use the product?" },
+                    children: []
+                  }
+                ]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [{ id: "submit", type: "Button", children: ["Request invite"] }]
+              }
+            ]
+          }
+        },
+        {
+          state: { form: { email: "", consent: false } },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  {
+                    id: "email",
+                    type: "Input",
+                    props: { value: { $bindState: "/form/email" }, placeholder: "Work email" },
+                    children: []
+                  },
+                  {
+                    id: "consent",
+                    type: "Checkbox",
+                    props: { checked: { $bindState: "/form/consent" }, label: "I agree to product updates" },
+                    children: []
+                  }
+                ]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                children: [
+                  {
+                    id: "submit",
+                    type: "Button",
+                    on: { press: { action: "validateForm", params: { path: "/form", required: ["email"] } } },
+                    children: ["Continue"]
+                  }
+                ]
               }
             ]
           }
@@ -623,8 +830,9 @@ export function buildPromptSkillSection(input: PromptSkillSectionInput): string 
   lines.push(`- spacing: ${styles.spacing.length > 0 ? styles.spacing.join(", ") : "not specified"}`);
   lines.push(`- hierarchy: ${styles.hierarchy.length > 0 ? styles.hierarchy.join(", ") : "not specified"}`);
   lines.push("FEW-SHOT EXAMPLES:");
-  lines.push(`GOOD_EXAMPLE_1: ${JSON.stringify(examples.good[0])}`);
-  lines.push(`GOOD_EXAMPLE_2: ${JSON.stringify(examples.good[1])}`);
+  examples.good.forEach((example, index) => {
+    lines.push(`GOOD_EXAMPLE_${index + 1}: ${JSON.stringify(example)}`);
+  });
   lines.push(`BAD_EXAMPLE_REJECT: ${examples.bad}`);
 
   return lines.join("\n");
@@ -636,6 +844,8 @@ export function buildPass2ContractBlock(isV2: boolean): string {
       "PASS2 CONTRACT (STRICT):",
       "- Output exactly one JSON object matching { state?: object, tree: UIComponentNodeV2 }.",
       "- Do not output multiple root JSON objects in one response.",
+      "- Do not output partial prefixes, fenced code blocks, explanations, or restarted JSON fragments.",
+      "- If you revise the structure internally, discard the prior draft and output only the final object.",
       "- Use only allowed component types from the catalog section.",
       "- Enforce valid semantic fields: visible, repeat, on, watch, dynamic expressions.",
       "- Never output empty/sparse skeletons; produce complete, renderable layouts."
@@ -665,6 +875,7 @@ export function buildRetryPromptWithValidationFeedback(
   const pack = findPackById(detectPromptPack(originalPrompt));
   const styles = extractStyleTokens(originalPrompt);
   const example = JSON.stringify(pack.examplesV2.good[0]);
+  const alternateExample = pack.examplesV2.good[1] ? JSON.stringify(pack.examplesV2.good[1]) : "";
   const styleSummary = [
     styles.colors.length > 0 ? `colors: ${styles.colors.join(", ")}` : "",
     styles.aesthetics.length > 0 ? `aesthetics: ${styles.aesthetics.join(", ")}` : "",
@@ -685,6 +896,7 @@ export function buildRetryPromptWithValidationFeedback(
       `Minimum target size: ${pack.minElementsV2} elements.`,
       styleSummary.length > 0 ? `Preserve requested style tokens: ${styleSummary}` : "",
       `Repair template: ${example}`,
+      alternateExample.length > 0 ? `Alternate valid example: ${alternateExample}` : "",
       "Generate one fresh valid snapshot from scratch. Do not continue or repeat malformed partial output."
     ]
       .filter((line) => line.length > 0)
@@ -703,6 +915,7 @@ export function buildRetryPromptWithValidationFeedback(
     `Minimum target size: ${pack.minElementsV2} elements.`,
     styleSummary.length > 0 ? `Preserve requested style tokens: ${styleSummary}` : "",
     `Repair template: ${example}`,
+    alternateExample.length > 0 ? `Alternate valid example: ${alternateExample}` : "",
     "Do not repeat the prior invalid structure.",
     "Generate one fresh valid snapshot from scratch. Ignore malformed partial output from earlier attempts.",
     "Return exactly one complete valid JSON snapshot."

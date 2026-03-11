@@ -2,12 +2,15 @@ import {
   canonicalizeCatalogComponentTypeV2
 } from "@repo/component-catalog";
 import type { UISpecV2 } from "@repo/contracts";
-import type { ExtractComponentsResult } from "@repo/integrations";
+import { detectPromptPack, type ExtractComponentsResult } from "@repo/integrations";
 
 const CARD_HINT = /\b(card|pricing|plan|dashboard|hero)\b/i;
 const FORM_HINT = /\b(form|login|sign[- ]?up|input|textarea|select|checkbox|submit)\b/i;
 const BUTTON_HINT = /\b(button|cta|submit|action|trial|buy|subscribe)\b/i;
 const FORM_CONTROL_TYPES = new Set(["Input", "Textarea", "Select", "Checkbox"]);
+const TITLE_TYPES = new Set(["CardTitle"]);
+const DESCRIPTION_TYPES = new Set(["CardDescription"]);
+const TEXT_LIKE_TYPES = new Set(["Text", "CardTitle", "CardDescription"]);
 
 export interface ConstraintSetV2 {
   requiredComponentTypes: Set<string>;
@@ -27,6 +30,24 @@ export interface BuildConstraintInputV2 {
 
 function hasAnyType(spec: UISpecV2, types: Set<string>): boolean {
   return Object.values(spec.elements).some((element) => types.has(element.type));
+}
+
+function countTypes(spec: UISpecV2, types: Set<string>): number {
+  return Object.values(spec.elements).filter((element) => types.has(element.type)).length;
+}
+
+function hasPriceLikeText(spec: UISpecV2): boolean {
+  return Object.values(spec.elements).some((element) => {
+    if (!TEXT_LIKE_TYPES.has(element.type)) {
+      return false;
+    }
+    const value = element.props.text;
+    return typeof value === "string" && /(\$\d|\b\/mo\b|\bmonthly\b|\bannual\b)/i.test(value);
+  });
+}
+
+function hasRepeat(spec: UISpecV2): boolean {
+  return Object.values(spec.elements).some((element) => element.repeat !== undefined);
 }
 
 export function buildConstraintSetV2(input: BuildConstraintInputV2): ConstraintSetV2 {
@@ -96,4 +117,41 @@ export function validateConstraintSetV2(
   }
 
   return violations;
+}
+
+export function isUsableSpecForPromptPackV2(spec: UISpecV2, prompt: string): boolean {
+  const pack = detectPromptPack(prompt);
+  const elementTypes = new Set(Object.values(spec.elements).map((element) => element.type));
+
+  switch (pack) {
+    case "pricing-card":
+      return (
+        elementTypes.has("Card") &&
+        elementTypes.has("CardHeader") &&
+        elementTypes.has("CardContent") &&
+        (elementTypes.has("Button") || elementTypes.has("CardFooter")) &&
+        (hasPriceLikeText(spec) || hasRepeat(spec))
+      );
+    case "form":
+      return (
+        elementTypes.has("Card") &&
+        elementTypes.has("CardContent") &&
+        hasAnyType(spec, FORM_CONTROL_TYPES) &&
+        elementTypes.has("Button")
+      );
+    case "dashboard":
+      return (
+        elementTypes.has("Card") &&
+        elementTypes.has("CardContent") &&
+        (hasRepeat(spec) || countTypes(spec, TEXT_LIKE_TYPES) >= 3)
+      );
+    case "hero":
+      return (
+        elementTypes.has("Card") &&
+        elementTypes.has("Button") &&
+        (hasAnyType(spec, TITLE_TYPES) || hasAnyType(spec, DESCRIPTION_TYPES) || countTypes(spec, TEXT_LIKE_TYPES) >= 2)
+      );
+    default:
+      return elementTypes.has("Card") && Object.keys(spec.elements).length >= 3;
+  }
 }
