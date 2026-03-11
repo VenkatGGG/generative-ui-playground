@@ -101,7 +101,7 @@ function elementDefaults(
   elementId: string,
   parents: Map<string, string>,
   prompt: string
-): { className?: string; variant?: string } {
+): { className?: string; variant?: string; direction?: string; placeholder?: string } {
   const element = spec.elements[elementId];
   if (!element) {
     return {};
@@ -110,6 +110,13 @@ function elementDefaults(
   const text = collectElementText(spec, elementId).toLowerCase();
   const parentId = parents.get(elementId);
   const parent = parentId ? spec.elements[parentId] : null;
+  const childTypes = element.children.map((childId) => spec.elements[childId]?.type).filter(Boolean);
+  const buttonSiblings =
+    parent?.children
+      .map((childId) => spec.elements[childId])
+      .filter((candidate): candidate is UISpecElementV2 => !!candidate && candidate.type === "Button") ?? [];
+  const buttonIndex =
+    parent?.children.findIndex((childId) => childId === elementId) ?? -1;
 
   switch (element.type) {
     case "Card":
@@ -125,17 +132,35 @@ function elementDefaults(
     case "CardFooter":
       return { className: "flex flex-wrap gap-3 pt-2" };
     case "Stack":
-      if (elementId.includes("feature") || elementId.includes("metric") || elementId.includes("row")) {
+      if (childTypes.includes("CardTitle") && childTypes.includes("Badge")) {
+        return {
+          className: "items-start justify-between gap-3",
+          direction: "horizontal"
+        };
+      }
+      if (elementId === "kpi-list" || childTypes.every((type) => type === "Stack")) {
         return { className: "gap-3" };
+      }
+      if ((/^kpi/i.test(elementId) || /metric/i.test(elementId)) && childTypes.filter((type) => type === "Text").length >= 2) {
+        return {
+          className: "items-center justify-between gap-3 rounded-lg border border-slate-200/70 px-4 py-3",
+          direction: "horizontal"
+        };
+      }
+      if (/feature|metric|row/i.test(elementId)) {
+        return { className: "items-center gap-3", direction: "horizontal" };
       }
       return { className: "gap-4" };
     case "Button": {
       const secondary = /(view|docs|details|export|learn more|secondary|cancel)/.test(text);
+      const shouldPromotePrimary =
+        parent?.type === "CardFooter" && buttonSiblings.length > 1 && buttonIndex === 0;
+      const variant = secondary && !shouldPromotePrimary ? "outline" : buttonIndex > 0 && parent?.type === "CardFooter" ? "outline" : "default";
       return {
-        className: secondary
+        className: variant === "outline"
           ? "min-w-[140px]"
           : `min-w-[160px] ${inferAccentClass(prompt)}`.trim(),
-        variant: secondary ? "outline" : "default"
+        variant
       };
     }
     case "Badge":
@@ -144,7 +169,18 @@ function elementDefaults(
       }
       return { className: "w-fit" };
     case "Input":
+      if (elementId.includes("email")) {
+        return { className: "w-full", placeholder: "you@company.com" };
+      }
+      if (elementId.includes("name")) {
+        return { className: "w-full", placeholder: "Your name" };
+      }
+      return { className: "w-full" };
     case "Textarea":
+      if (elementId.includes("message")) {
+        return { className: "w-full", placeholder: "Tell us a bit about your project..." };
+      }
+      return { className: "w-full" };
     case "Select":
       return { className: "w-full" };
     case "Checkbox":
@@ -218,6 +254,16 @@ export function applyPresentationDefaultsV2(spec: UISpecV2, prompt: string): Pre
         nextProps.className = mergedClasses.className;
       }
       changed ||= mergedClasses.changed;
+
+      if (!nextProps.direction && defaults.direction) {
+        nextProps.direction = defaults.direction;
+        changed = true;
+      }
+
+      if (!nextProps.placeholder && defaults.placeholder) {
+        nextProps.placeholder = defaults.placeholder;
+        changed = true;
+      }
 
       if (!nextProps.variant && defaults.variant) {
         nextProps.variant = defaults.variant;
