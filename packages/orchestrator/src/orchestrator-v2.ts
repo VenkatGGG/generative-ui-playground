@@ -30,6 +30,7 @@ import {
   isUsableSpecForPromptPackV2,
   validateConstraintSetV2
 } from "./constraints-v2";
+import { applyPresentationDefaultsV2 } from "./presentation-v2";
 
 export interface OrchestratorDepsV2 {
   model: GenerationModelAdapter;
@@ -946,6 +947,9 @@ export async function* runGenerationV2(
               });
             }
 
+            const presentation = applyPresentationDefaultsV2(candidateSpec, request.prompt);
+            candidateSpec = presentation.spec;
+
             const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
             const semanticIssues = validation.valid
               ? []
@@ -1013,7 +1017,7 @@ export async function* runGenerationV2(
             acceptedOnAttempt = true;
             acceptedCandidate = true;
             acceptedSnapshotForPersistence =
-              usedStructuralAutofix || packFix.fixes.length > 0 ? null : snapshot;
+              usedStructuralAutofix || packFix.fixes.length > 0 || presentation.changed ? null : snapshot;
           }
         }
       } catch (error) {
@@ -1066,7 +1070,7 @@ export async function* runGenerationV2(
 
     if (!acceptedCandidate) {
       const fallbackSnapshot = buildFallbackSnapshotV2(request.prompt);
-      const fallbackSpec = normalizeTreeToSpecV2(fallbackSnapshot);
+      const fallbackSpec = applyPresentationDefaultsV2(normalizeTreeToSpecV2(fallbackSnapshot), request.prompt).spec;
       const validation = validateSpecV2(fallbackSpec, { allowedComponentTypes });
 
       if (!validation.valid) {
