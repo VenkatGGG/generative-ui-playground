@@ -45,6 +45,8 @@ describe("InMemoryPersistenceAdapter", () => {
     expect(persisted.message.meta?.patchCount).toBe(2);
     expect(persisted.message.meta?.durationMs).toBe(12);
     expect(persisted.message.meta?.specHash).toBe("hash");
+    expect(persisted.message.meta?.warningCodes).toEqual([]);
+    expect(persisted.message.meta?.fallbackApplied).toBe(false);
     expect(failureLog.errorCode).toBe("GENERATION_EXCEPTION");
     expect(failureLog.durationMs).toBe(4);
     expect(bundle?.versions.length).toBeGreaterThan(0);
@@ -103,6 +105,8 @@ describe("InMemoryPersistenceAdapter", () => {
     const bundle = await adapter.getThreadBundleV2(thread.threadId);
 
     expect(persisted.version.schemaVersion).toBe("v2");
+    expect(persisted.message.meta?.warningCodes).toEqual([]);
+    expect(persisted.message.meta?.fallbackApplied).toBe(false);
     expect(reverted.schemaVersion).toBe("v2");
     expect(bundle?.versions[0]?.schemaVersion).toBe("v2");
     expect(bundle?.thread.activeVersionId).toBe(reverted.versionId);

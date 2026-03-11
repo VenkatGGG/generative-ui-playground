@@ -268,7 +268,7 @@ export function createOpenAIGenerationModel(
       });
 
       const parsed = safeJsonParse(raw);
-      return normalizeExtractComponentsResult(parsed);
+      return normalizeExtractComponentsResult(parsed, input.prompt);
     },
     streamDesign(input) {
       return streamOpenAI(fetchImpl, endpoint, options.apiKey, {

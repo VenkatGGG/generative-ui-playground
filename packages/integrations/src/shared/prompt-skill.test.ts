@@ -40,6 +40,8 @@ describe("prompt skill layer", () => {
       2
     );
     expect(retryPrompt).toContain("Retry attempt 2");
+    expect(retryPrompt).toContain("Detected prompt pack: pricing-card");
+    expect(retryPrompt).toContain("Repair template:");
     expect(retryPrompt).toContain("V2_INVALID_VISIBLE_EXPRESSION");
     expect(retryPrompt).toContain("exactly one complete valid JSON snapshot");
 
@@ -70,6 +72,6 @@ describe("prompt skill layer", () => {
     );
 
     expect(floorV1).toBeGreaterThan(0);
-    expect(floorV2).toBeGreaterThan(floorV1);
+    expect(floorV2).toBeGreaterThanOrEqual(floorV1);
   });
 });

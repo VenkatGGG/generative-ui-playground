@@ -85,10 +85,11 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
       "Root must be Card.",
       "Include CardHeader with CardTitle and CardDescription.",
       "Include CardContent with at least one Stack or repeated feature block.",
+      "Include CardFooter with a primary and secondary Button when the prompt asks for CTA groups or footer actions.",
       "Use Button visibility/actions if prompt asks for conditional CTA behavior."
     ],
     minElementsV1: 8,
-    minElementsV2: 10,
+    minElementsV2: 8,
     examplesV1: {
       good: [
         {
@@ -223,7 +224,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
       "Use state-driven visibility or repeat for list-like metric rows."
     ],
     minElementsV1: 10,
-    minElementsV2: 12,
+    minElementsV2: 10,
     examplesV1: {
       good: [
         {
@@ -319,7 +320,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
       "Use on.submit/on.press action with validateForm or setState."
     ],
     minElementsV1: 6,
-    minElementsV2: 9,
+    minElementsV2: 8,
     examplesV1: {
       good: [
         {
@@ -420,7 +421,7 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
       "Use visibility or state only when prompt requests dynamic behavior."
     ],
     minElementsV1: 6,
-    minElementsV2: 8,
+    minElementsV2: 6,
     examplesV1: {
       good: [
         {
@@ -502,7 +503,7 @@ function findPackById(id: PromptPackId): PromptPackDefinition {
         "Prefer state-driven bindings for form-like interactions."
       ],
       minElementsV1: 6,
-      minElementsV2: 8,
+      minElementsV2: 6,
       examplesV1: {
         good: [
           {
@@ -661,17 +662,50 @@ export function buildRetryPromptWithValidationFeedback(
   issues: RetryFeedbackIssue[],
   attempt: number
 ): string {
+  const pack = findPackById(detectPromptPack(originalPrompt));
+  const styles = extractStyleTokens(originalPrompt);
+  const example = JSON.stringify(pack.examplesV2.good[0]);
+  const styleSummary = [
+    styles.colors.length > 0 ? `colors: ${styles.colors.join(", ")}` : "",
+    styles.aesthetics.length > 0 ? `aesthetics: ${styles.aesthetics.join(", ")}` : "",
+    styles.spacing.length > 0 ? `spacing: ${styles.spacing.join(", ")}` : "",
+    styles.hierarchy.length > 0 ? `hierarchy: ${styles.hierarchy.join(", ")}` : ""
+  ]
+    .filter((entry) => entry.length > 0)
+    .join(" | ");
+
   if (issues.length === 0) {
-    return `${originalPrompt}\n\nRetry attempt ${attempt}. Produce a richer valid output.`;
+    return [
+      originalPrompt,
+      "",
+      `Retry attempt ${attempt}. Produce a richer valid output.`,
+      `Detected prompt pack: ${pack.id}.`,
+      "Follow this repair checklist:",
+      ...pack.requiredRulesV2.map((rule) => `- ${rule}`),
+      `Minimum target size: ${pack.minElementsV2} elements.`,
+      styleSummary.length > 0 ? `Preserve requested style tokens: ${styleSummary}` : "",
+      `Repair template: ${example}`,
+      "Generate one fresh valid snapshot from scratch. Do not continue or repeat malformed partial output."
+    ]
+      .filter((line) => line.length > 0)
+      .join("\n");
   }
 
   const lines = issues.map((issue) => `- [${issue.code}] ${issue.message}`);
   return [
     originalPrompt,
     "",
+    `Detected prompt pack: ${pack.id}.`,
     `Retry attempt ${attempt}. You MUST fix all validation findings below:`,
     ...lines,
-    "Do not repeat the prior invalid structure. Return exactly one complete valid JSON snapshot."
+    "Repair checklist:",
+    ...pack.requiredRulesV2.map((rule) => `- ${rule}`),
+    `Minimum target size: ${pack.minElementsV2} elements.`,
+    styleSummary.length > 0 ? `Preserve requested style tokens: ${styleSummary}` : "",
+    `Repair template: ${example}`,
+    "Do not repeat the prior invalid structure.",
+    "Generate one fresh valid snapshot from scratch. Ignore malformed partial output from earlier attempts.",
+    "Return exactly one complete valid JSON snapshot."
   ].join("\n");
 }
 

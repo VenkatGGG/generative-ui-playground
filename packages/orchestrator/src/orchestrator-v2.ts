@@ -16,7 +16,9 @@ import {
 } from "@repo/spec-engine";
 import {
   buildRetryPromptWithValidationFeedback,
+  detectPromptPack,
   estimatePromptPackMinElements,
+  extractStyleTokens,
   type GenerationModelAdapter,
   type MCPAdapter
 } from "@repo/integrations";
@@ -155,10 +157,268 @@ function mergeMcpContexts(base: Awaited<ReturnType<MCPAdapter["fetchContext"]>>,
   };
 }
 
-function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
-  const title = prompt.includes("pricing") ? "Pricing Card" : "Generated UI";
-  const summary = prompt.trim().replace(/\s+/g, " ").slice(0, 120) || "Semantic v2 fallback snapshot.";
+function summarizePrompt(prompt: string): string {
+  return prompt.trim().replace(/\s+/g, " ").slice(0, 120) || "Semantic v2 fallback snapshot.";
+}
 
+function primaryButtonClassName(prompt: string): string {
+  const colors = extractStyleTokens(prompt).colors;
+  if (colors.some((color) => ["blue", "sky", "cyan", "indigo"].includes(color))) {
+    return "bg-blue-600 text-white hover:bg-blue-700";
+  }
+  if (colors.some((color) => ["green", "emerald", "teal"].includes(color))) {
+    return "bg-emerald-600 text-white hover:bg-emerald-700";
+  }
+  if (colors.some((color) => ["amber", "orange", "yellow"].includes(color))) {
+    return "bg-amber-500 text-slate-950 hover:bg-amber-400";
+  }
+  return "";
+}
+
+function buildPricingFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
+  return {
+    state: {
+      features: [
+        { id: "f1", label: "Unlimited projects" },
+        { id: "f2", label: "Priority support" },
+        { id: "f3", label: "Team collaboration" }
+      ]
+    },
+    tree: {
+      id: "root",
+      type: "Card",
+      props: { className: "w-full max-w-lg border shadow-sm" },
+      children: [
+        {
+          id: "header",
+          type: "CardHeader",
+          children: [
+            { id: "eyebrow", type: "Badge", props: { variant: "secondary" }, children: ["Most Popular"] },
+            { id: "title", type: "CardTitle", children: ["Pro Plan"] },
+            {
+              id: "description",
+              type: "CardDescription",
+              children: ["Designed for startups and product teams moving quickly."]
+            }
+          ]
+        },
+        { id: "divider", type: "Separator", children: [] },
+        {
+          id: "content",
+          type: "CardContent",
+          children: [
+            {
+              id: "price-block",
+              type: "Stack",
+              props: { direction: "vertical", gap: "gap-1", className: "mb-6" },
+              children: [
+                { id: "price", type: "Text", props: { className: "text-4xl font-semibold tracking-tight" }, children: ["$29/mo"] },
+                { id: "price-note", type: "Text", props: { className: "text-sm text-muted-foreground" }, children: ["Simple monthly billing"] }
+              ]
+            },
+            {
+              id: "feature-row",
+              type: "Stack",
+              repeat: { statePath: "/features", key: "id" },
+              props: { direction: "horizontal", gap: "gap-3", className: "items-center py-1" },
+              children: [
+                { id: "feature-bullet", type: "Badge", props: { variant: "outline" }, children: ["+"] },
+                { id: "feature-text", type: "Text", props: { text: { $item: "label" }, className: "text-sm" }, children: [] }
+              ]
+            }
+          ]
+        },
+        {
+          id: "footer",
+          type: "CardFooter",
+          props: { className: "flex flex-col gap-3 sm:flex-row" },
+          children: [
+            {
+              id: "primary-cta",
+              type: "Button",
+              props: { className: `w-full sm:flex-1 ${primaryButtonClassName(prompt)}`.trim() },
+              children: ["Start Free Trial"]
+            },
+            {
+              id: "secondary-cta",
+              type: "Button",
+              props: { variant: "outline", className: "w-full sm:flex-1" },
+              children: ["View Docs"]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function buildFormFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
+  return {
+    state: {
+      form: {
+        name: "",
+        email: "",
+        message: "",
+        accepted: false
+      }
+    },
+    tree: {
+      id: "root",
+      type: "Card",
+      props: { className: "w-full max-w-xl border shadow-sm" },
+      children: [
+        {
+          id: "header",
+          type: "CardHeader",
+          children: [
+            { id: "title", type: "CardTitle", children: ["Contact Us"] },
+            { id: "description", type: "CardDescription", children: [summarizePrompt(prompt)] }
+          ]
+        },
+        { id: "divider", type: "Separator", children: [] },
+        {
+          id: "content",
+          type: "CardContent",
+          children: [
+            {
+              id: "fields",
+              type: "Stack",
+              props: { direction: "vertical", gap: "gap-3" },
+              children: [
+                { id: "name", type: "Input", props: { placeholder: "Name", value: { $bindState: "/form/name" } }, children: [] },
+                { id: "email", type: "Input", props: { placeholder: "Email", value: { $bindState: "/form/email" } }, children: [] },
+                { id: "message", type: "Textarea", props: { placeholder: "Message", value: { $bindState: "/form/message" }, rows: 5 }, children: [] },
+                {
+                  id: "accepted",
+                  type: "Checkbox",
+                  props: { label: "I agree to be contacted", checked: { $bindState: "/form/accepted" } },
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "footer",
+          type: "CardFooter",
+          props: { className: "flex flex-col gap-3 sm:flex-row" },
+          children: [
+            {
+              id: "submit",
+              type: "Button",
+              props: { className: `w-full sm:flex-1 ${primaryButtonClassName(prompt)}`.trim() },
+              on: { press: { action: "validateForm", params: { path: "/form", required: ["name", "email", "message"] } } },
+              children: ["Send Message"]
+            },
+            {
+              id: "secondary",
+              type: "Button",
+              props: { variant: "outline", className: "w-full sm:flex-1" },
+              children: ["View Docs"]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function buildDashboardFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
+  return {
+    state: {
+      metrics: [
+        { id: "m1", label: "MRR", value: "$42k" },
+        { id: "m2", label: "Active Users", value: "18.4k" },
+        { id: "m3", label: "Churn", value: "1.8%" }
+      ]
+    },
+    tree: {
+      id: "root",
+      type: "Card",
+      props: { className: "w-full max-w-2xl border shadow-sm" },
+      children: [
+        {
+          id: "header",
+          type: "CardHeader",
+          children: [
+            { id: "title", type: "CardTitle", children: ["Operations Dashboard"] },
+            { id: "description", type: "CardDescription", children: [summarizePrompt(prompt)] }
+          ]
+        },
+        {
+          id: "content",
+          type: "CardContent",
+          children: [
+            {
+              id: "metric-row",
+              type: "Stack",
+              repeat: { statePath: "/metrics", key: "id" },
+              props: {
+                direction: "horizontal",
+                gap: "gap-4",
+                className: "items-center justify-between rounded-lg border px-4 py-3"
+              },
+              children: [
+                { id: "metric-label", type: "Text", props: { text: { $item: "label" }, className: "text-sm text-muted-foreground" }, children: [] },
+                { id: "metric-value", type: "Text", props: { text: { $item: "value" }, className: "text-lg font-semibold" }, children: [] }
+              ]
+            }
+          ]
+        },
+        {
+          id: "footer",
+          type: "CardFooter",
+          children: [
+            {
+              id: "refresh",
+              type: "Button",
+              props: { className: primaryButtonClassName(prompt) },
+              children: ["Refresh"]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function buildHeroFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
+  return {
+    tree: {
+      id: "root",
+      type: "Card",
+      props: { className: "w-full max-w-3xl border shadow-sm" },
+      children: [
+        {
+          id: "content",
+          type: "CardContent",
+          children: [
+            {
+              id: "hero-stack",
+              type: "Stack",
+              props: { direction: "vertical", gap: "gap-4", className: "py-8" },
+              children: [
+                { id: "title", type: "CardTitle", children: ["Ship polished UIs faster"] },
+                { id: "description", type: "CardDescription", children: [summarizePrompt(prompt)] },
+                {
+                  id: "actions",
+                  type: "Stack",
+                  props: { direction: "horizontal", gap: "gap-3" },
+                  children: [
+                    { id: "primary", type: "Button", props: { className: primaryButtonClassName(prompt) }, children: ["Get Started"] },
+                    { id: "secondary", type: "Button", props: { variant: "outline" }, children: ["Explore Docs"] }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function buildGenericFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
   return {
     state: {
       details: [
@@ -169,21 +429,14 @@ function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
     tree: {
       id: "root",
       type: "Card",
+      props: { className: "w-full max-w-lg border shadow-sm" },
       children: [
         {
           id: "header",
           type: "CardHeader",
           children: [
-            {
-              id: "title",
-              type: "CardTitle",
-              children: [title]
-            },
-            {
-              id: "description",
-              type: "CardDescription",
-              children: [summary]
-            }
+            { id: "title", type: "CardTitle", children: ["Generated UI"] },
+            { id: "description", type: "CardDescription", children: [summarizePrompt(prompt)] }
           ]
         },
         {
@@ -194,25 +447,43 @@ function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
               id: "items",
               type: "Stack",
               repeat: { statePath: "/details", key: "id" },
+              props: { direction: "vertical", gap: "gap-2" },
               children: [
                 {
                   id: "item-text",
                   type: "Text",
-                  props: { text: { $item: "text" } },
+                  props: { text: { $item: "text" }, className: "text-sm" },
                   children: []
                 }
               ]
-            },
-            {
-              id: "cta",
-              type: "Button",
-              children: ["Continue"]
             }
+          ]
+        },
+        {
+          id: "footer",
+          type: "CardFooter",
+          children: [
+            { id: "cta", type: "Button", props: { className: primaryButtonClassName(prompt) }, children: ["Continue"] }
           ]
         }
       ]
     }
   };
+}
+
+function buildFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
+  switch (detectPromptPack(prompt)) {
+    case "pricing-card":
+      return buildPricingFallbackSnapshotV2(prompt);
+    case "form":
+      return buildFormFallbackSnapshotV2(prompt);
+    case "dashboard":
+      return buildDashboardFallbackSnapshotV2(prompt);
+    case "hero":
+      return buildHeroFallbackSnapshotV2(prompt);
+    default:
+      return buildGenericFallbackSnapshotV2(prompt);
+  }
 }
 
 async function recordFailureSafely(
@@ -315,6 +586,8 @@ export async function* runGenerationV2(
     let sawAnyCandidate = false;
     let lastValidationIssues: Array<{ code: string; message: string }> = [];
     const rejectedSignatures = new Set<string>();
+    let acceptedSnapshotForPersistence: UITreeSnapshotV2 | null = null;
+    let fallbackApplied = false;
 
     for (let attempt = 1; attempt <= MAX_PASS2_ATTEMPTS; attempt += 1) {
       yield {
@@ -490,6 +763,7 @@ export async function* runGenerationV2(
             canonicalSpec = candidateSpec;
             acceptedOnAttempt = true;
             acceptedCandidate = true;
+            acceptedSnapshotForPersistence = snapshot;
           }
         }
       } catch (error) {
@@ -571,6 +845,7 @@ export async function* runGenerationV2(
       };
       warnings.push({ code: fallbackWarning.code, message: fallbackWarning.message });
       yield fallbackWarning;
+      fallbackApplied = true;
 
       const patches = diffSpecs(canonicalSpec, fallbackSpec);
       for (const patch of patches) {
@@ -583,6 +858,7 @@ export async function* runGenerationV2(
       }
       canonicalSpec = fallbackSpec;
       acceptedCandidate = true;
+      acceptedSnapshotForPersistence = fallbackSnapshot;
     }
 
     if (!acceptedCandidate) {
@@ -605,12 +881,14 @@ export async function* runGenerationV2(
     }
 
     const hash = specHash(canonicalSpec);
-    const assistantResponseText = modelOutputText.trim() || JSON.stringify(canonicalSpec);
+    const assistantResponseText = JSON.stringify(acceptedSnapshotForPersistence ?? canonicalSpec, null, 2);
     const assistantReasoningText = [
       `Generated semantic v2 UI for prompt "${request.prompt.slice(0, 120)}".`,
       `Intent confidence: ${pass1.confidence.toFixed(2)}.`,
       `MCP context ${runtimeContext.contextVersion} supplied ${runtimeContext.componentRules.length} rule(s).`,
-      `Applied ${patchCount} patch(es); warnings: ${warnings.length}.`
+      `Applied ${patchCount} patch(es); warnings: ${warnings.length}.`,
+      `Final source: ${fallbackApplied ? "deterministic fallback" : "model candidate"}.`,
+      `Final spec has ${Object.keys(canonicalSpec.elements).length} element(s).`
     ].join(" ");
 
     const persisted = await deps.persistence.persistGenerationV2({

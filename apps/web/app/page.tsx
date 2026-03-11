@@ -275,12 +275,26 @@ type UiMessage = {
   role: "user" | "assistant";
   content: string;
   reasoning?: string;
+  meta?: Record<string, unknown>;
 };
 
 type RevertState = {
   versionId: string | null;
   loading: boolean;
 };
+
+function looksLikeJsonContent(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
+function fallbackApplied(meta: Record<string, unknown> | undefined): boolean {
+  return meta?.fallbackApplied === true;
+}
+
+function warningCount(meta: Record<string, unknown> | undefined): number | null {
+  return typeof meta?.warningCount === "number" ? (meta.warningCount as number) : null;
+}
 
 function findActiveSpec(bundle: ThreadBundleV2): UISpecV2 | null {
   const activeId = bundle.thread.activeVersionId;
@@ -338,12 +352,13 @@ export default function HomePage() {
     const nextBundle = (await response.json()) as ThreadBundleV2;
     setBundle(nextBundle);
     setVersions(nextBundle.versions);
-    setMessages(
+        setMessages(
       nextBundle.messages.map((message) => ({
         id: message.id,
         role: message.role,
         content: message.content,
-        reasoning: message.reasoning
+        reasoning: message.reasoning,
+        meta: message.meta
       }))
     );
 
@@ -513,9 +528,26 @@ export default function HomePage() {
                 ) : (
                   messages.map((message) => (
                     <div key={message.id} className="space-y-1 text-sm">
-                      <p>
-                        <span className="font-semibold">{message.role}:</span> {message.content}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{message.role}:</span>
+                        {message.role === "assistant" && fallbackApplied(message.meta) ? (
+                          <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                            fallback
+                          </Badge>
+                        ) : null}
+                        {message.role === "assistant" && warningCount(message.meta) !== null ? (
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                            warnings {warningCount(message.meta)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {message.role === "assistant" && looksLikeJsonContent(message.content) ? (
+                        <pre className="max-h-48 overflow-auto rounded-md bg-muted p-2 text-xs whitespace-pre-wrap break-words">
+                          {message.content}
+                        </pre>
+                      ) : (
+                        <p>{message.content}</p>
+                      )}
                       {message.role === "assistant" && message.reasoning ? (
                         <p className="text-xs text-muted-foreground">
                           <span className="font-medium">reasoning:</span> {message.reasoning}

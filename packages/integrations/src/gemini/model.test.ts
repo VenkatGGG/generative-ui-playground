@@ -53,6 +53,71 @@ describe("createGeminiGenerationModel", () => {
     expect(result.confidence).toBe(0.91);
   });
 
+  it("retries transient pass1 failures before succeeding", async () => {
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async () => {
+      callCount += 1;
+
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 503,
+              status: "UNAVAILABLE"
+            }
+          }),
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      components: ["Card", "Input", "Button"],
+                      intentType: "new",
+                      confidence: 0.96
+                    })
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      fetchImpl
+    });
+
+    const result = await adapter.extractComponents({
+      prompt: "build a contact form",
+      previousSpec: null
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.components).toEqual(["Card", "Input", "Button"]);
+    expect(result.intentType).toBe("new");
+    expect(result.confidence).toBe(0.96);
+  });
+
   it("streams pass2 chunks from gemini sse payload", async () => {
     const ssePayload = [
       'data: {"candidates":[{"content":{"parts":[{"text":"{\\"id\\":\\"root\\",\\"type\\":\\"Card\\"}\\n"}]}}]}',
@@ -227,5 +292,50 @@ describe("createGeminiGenerationModel", () => {
     }
 
     expect(chunks).toHaveLength(1);
+  });
+
+  it("retries transient stream transport failures before succeeding", async () => {
+    const ssePayload = [
+      'data: {"candidates":[{"content":{"parts":[{"text":"{\\"state\\":{},\\"tree\\":{\\"id\\":\\"root\\",\\"type\\":\\"Card\\",\\"children\\":[]}}"}]}}]}',
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n");
+
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        throw new TypeError("fetch failed");
+      }
+
+      return new Response(ssePayload, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream"
+        }
+      });
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      fetchImpl
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of adapter.streamDesignV2!({
+      prompt: "build a pricing card using CardHeader and CardFooter",
+      previousSpec: null,
+      componentContext: {
+        contextVersion: "ctx-v2",
+        componentRules: []
+      }
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(callCount).toBe(2);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain('"tree"');
   });
 });

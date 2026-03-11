@@ -220,6 +220,8 @@ describe("MongoPersistenceAdapter", () => {
     expect(persisted.message.meta?.patchCount).toBe(3);
     expect(persisted.message.meta?.durationMs).toBe(25);
     expect(persisted.message.meta?.specHash).toBe("hash-1");
+    expect(persisted.message.meta?.warningCodes).toEqual([]);
+    expect(persisted.message.meta?.fallbackApplied).toBe(false);
     expect(persisted.log.patchCount).toBe(3);
     expect(persisted.log.durationMs).toBe(25);
 
@@ -300,6 +302,8 @@ describe("MongoPersistenceAdapter", () => {
     });
 
     expect(persisted.version.schemaVersion).toBe("v2");
+    expect(persisted.message.meta?.warningCodes).toEqual([]);
+    expect(persisted.message.meta?.fallbackApplied).toBe(false);
 
     const reverted = await adapter.revertThreadV2(thread.threadId, persisted.version.versionId);
     expect(reverted.schemaVersion).toBe("v2");

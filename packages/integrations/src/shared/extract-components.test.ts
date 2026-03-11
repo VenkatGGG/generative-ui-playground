@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeExtractComponentsResult } from "./extract-components";
+import {
+  extractExplicitPromptComponents,
+  normalizeExtractComponentsResult
+} from "./extract-components";
 
 describe("normalizeExtractComponentsResult", () => {
   it("normalizes valid payload fields", () => {
@@ -20,5 +23,22 @@ describe("normalizeExtractComponentsResult", () => {
     expect(result.components).toEqual([]);
     expect(result.intentType).toBe("new");
     expect(result.confidence).toBe(0);
+  });
+
+  it("merges explicit component mentions from the prompt", () => {
+    const result = normalizeExtractComponentsResult(
+      {
+        components: ["Card", "Button"]
+      },
+      'Create a UI using CardHeader, CardContent, CardFooter, and Button'
+    );
+
+    expect(result.components).toEqual(["Card", "Button", "CardHeader", "CardContent", "CardFooter"]);
+  });
+
+  it("extracts explicit component names directly from prompt text", () => {
+    const components = extractExplicitPromptComponents("Use CardHeader, CardTitle, Input and Button.");
+
+    expect(components).toEqual(["CardHeader", "CardTitle", "Input", "Button"]);
   });
 });

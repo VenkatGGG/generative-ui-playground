@@ -25,6 +25,9 @@ import { parseSseData } from "../shared/sse";
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
 const DEFAULT_PASS2_MODEL = "gemini-2.5-pro";
+const STREAM_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+const STREAM_MAX_ATTEMPTS = 3;
+const STREAM_RETRY_BASE_DELAY_MS = 600;
 
 type FetchLike = typeof fetch;
 export type GeminiThinkingLevel = "LOW" | "MEDIUM" | "HIGH";
@@ -89,6 +92,21 @@ function buildGenerateEndpoint(baseUrl: string, model: string, apiKey: string): 
 
 function buildStreamEndpoint(baseUrl: string, model: string, apiKey: string): string {
   return `${baseUrl.replace(/\/$/, "")}/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+function isRetryableTransportError(message: string): boolean {
+  return (
+    message.includes("fetch failed") ||
+    message.includes("ECONNRESET") ||
+    message.includes("network") ||
+    message.includes("timed out")
+  );
 }
 
 function toPass1Prompt(input: ExtractComponentsInput): string {
@@ -239,21 +257,38 @@ async function callGemini(
   endpoint: string,
   request: GeminiGenerateRequest
 ): Promise<string> {
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(request)
-  });
+  for (let attempt = 1; attempt <= STREAM_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(request)
+      });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gemini request failed (${response.status}): ${body}`);
+      if (!response.ok) {
+        const body = await response.text();
+        if (attempt < STREAM_MAX_ATTEMPTS && STREAM_RETRYABLE_STATUS_CODES.has(response.status)) {
+          await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
+          continue;
+        }
+        throw new Error(`Gemini request failed (${response.status}): ${body}`);
+      }
+
+      const payload = (await response.json()) as unknown;
+      return extractTextFromGeminiPayload(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt < STREAM_MAX_ATTEMPTS && isRetryableTransportError(message)) {
+        await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
+      throw error;
+    }
   }
 
-  const payload = (await response.json()) as unknown;
-  return extractTextFromGeminiPayload(payload);
+  throw new Error("Gemini request retry loop exhausted.");
 }
 
 async function* streamGemini(
@@ -261,40 +296,57 @@ async function* streamGemini(
   endpoint: string,
   request: GeminiGenerateRequest
 ): AsyncGenerator<string> {
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(request)
-  });
+  for (let attempt = 1; attempt <= STREAM_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(request)
+      });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gemini stream request failed (${response.status}): ${body}`);
-  }
+      if (!response.ok) {
+        const body = await response.text();
+        if (attempt < STREAM_MAX_ATTEMPTS && STREAM_RETRYABLE_STATUS_CODES.has(response.status)) {
+          await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
+          continue;
+        }
+        throw new Error(`Gemini stream request failed (${response.status}): ${body}`);
+      }
 
-  if (!response.body) {
-    const fallbackText = await response.text();
-    if (fallbackText) {
-      yield fallbackText;
-    }
-    return;
-  }
+      if (!response.body) {
+        const fallbackText = await response.text();
+        if (fallbackText) {
+          yield fallbackText;
+        }
+        return;
+      }
 
-  for await (const data of parseSseData(response.body)) {
-    if (data === "[DONE]") {
-      continue;
-    }
+      for await (const data of parseSseData(response.body)) {
+        if (data === "[DONE]") {
+          continue;
+        }
 
-    const parsed = safeJsonParse(data);
-    if (!parsed) {
-      continue;
-    }
+        const parsed = safeJsonParse(data);
+        if (!parsed) {
+          continue;
+        }
 
-    const chunk = extractTextFromGeminiPayload(parsed);
-    if (chunk.length > 0) {
-      yield chunk;
+        const chunk = extractTextFromGeminiPayload(parsed);
+        if (chunk.length > 0) {
+          yield chunk;
+        }
+      }
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt < STREAM_MAX_ATTEMPTS && isRetryableTransportError(message)) {
+        await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
+
+      throw error;
     }
   }
 }
@@ -318,7 +370,7 @@ export function createGeminiGenerationModel(
       const endpoint = buildGenerateEndpoint(baseUrl, pass1Model, options.apiKey);
       const raw = await callGemini(fetchImpl, endpoint, toRequest(toPass1Prompt(input)));
       const parsed = safeJsonParse(raw);
-      return normalizeExtractComponentsResult(parsed);
+      return normalizeExtractComponentsResult(parsed, input.prompt);
     },
     streamDesign(input) {
       const endpoint = buildStreamEndpoint(baseUrl, pass2Model, options.apiKey);

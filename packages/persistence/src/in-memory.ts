@@ -205,6 +205,8 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       createdAt: timestamp,
       meta: {
         warningCount: input.warnings.length,
+        warningCodes: input.warnings.map((warning) => warning.code),
+        fallbackApplied: input.warnings.some((warning) => warning.code === "FALLBACK_APPLIED"),
         patchCount: input.patchCount,
         durationMs: input.durationMs,
         specHash: input.specHash,
@@ -274,6 +276,8 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       createdAt: timestamp,
       meta: {
         warningCount: input.warnings.length,
+        warningCodes: input.warnings.map((warning) => warning.code),
+        fallbackApplied: input.warnings.some((warning) => warning.code === "FALLBACK_APPLIED"),
         patchCount: input.patchCount,
         durationMs: input.durationMs,
         specHash: input.specHash,
