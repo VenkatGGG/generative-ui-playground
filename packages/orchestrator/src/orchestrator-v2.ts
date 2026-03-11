@@ -870,6 +870,7 @@ export async function* runGenerationV2(
       let observedObjectOnAttempt = false;
       let buffer = "";
       const processedObjectTexts = new Set<string>();
+      let attemptFailureIssues: Array<{ code: string; message: string }> = [];
 
       try {
         for await (const chunk of streamSource) {
@@ -891,18 +892,10 @@ export async function* runGenerationV2(
             if (toolCall) {
               const fetched = await deps.mcp.fetchContext(toolCall.components);
               runtimeContext = mergeMcpContexts(runtimeContext, fetched);
-              const warning = {
-                type: "warning" as const,
-                generationId,
-                code: "V2_TOOL_CALL_EXECUTED",
-                message: `Executed tool call '${toolCall.tool}' for components: ${toolCall.components.join(", ")}`
-              };
-              warnings.push({ code: warning.code, message: warning.message });
-              yield warning;
               lastValidationIssues = [
                 {
-                  code: warning.code,
-                  message: warning.message
+                  code: "V2_TOOL_CALL_EXECUTED",
+                  message: `Executed tool call '${toolCall.tool}' for components: ${toolCall.components.join(", ")}`
                 }
               ];
               continue;
@@ -916,6 +909,7 @@ export async function* runGenerationV2(
             sawAnyCandidate = true;
             const initialCandidateSpec = normalizeTreeToSpecV2(snapshot);
             let candidateSpec = initialCandidateSpec;
+            const candidateAcceptedWarnings: Array<{ code: string; message: string }> = [];
             let usedStructuralAutofix = false;
             let structuralSchemaIssues = validateStructuralSpecV2(candidateSpec).issues.map((issue) => ({
               code: issue.code,
@@ -930,27 +924,15 @@ export async function* runGenerationV2(
                   candidateSpec = fixed.spec;
                   usedStructuralAutofix = true;
                   structuralSchemaIssues = [];
-                  const warning = {
-                    type: "warning" as const,
-                    generationId,
+                  candidateAcceptedWarnings.push({
                     code: "V2_AUTOFIX_APPLIED",
                     message: `Applied structural auto-fix before semantic validation: ${fixed.fixes.join(" ")}`
-                  };
-                  warnings.push({ code: warning.code, message: warning.message });
-                  yield warning;
+                  });
                 } else {
                   structuralSchemaIssues = fixedStructural.issues.map((issue) => ({
                     code: issue.code,
                     message: issue.message
                   }));
-                  const warning = {
-                    type: "warning" as const,
-                    generationId,
-                    code: "V2_AUTOFIX_FAILED",
-                    message: "Structural auto-fix attempted but candidate still has structural errors."
-                  };
-                  warnings.push({ code: warning.code, message: warning.message });
-                  yield warning;
                 }
               }
             }
@@ -958,14 +940,10 @@ export async function* runGenerationV2(
             const packFix = autoFixPackSpecV2(candidateSpec, request.prompt);
             if (packFix.fixes.length > 0) {
               candidateSpec = packFix.spec;
-              const warning = {
-                type: "warning" as const,
-                generationId,
+              candidateAcceptedWarnings.push({
                 code: "V2_PACK_AUTOFIX_APPLIED",
                 message: `Applied prompt-pack auto-fix before semantic validation: ${packFix.fixes.join(" ")}`
-              };
-              warnings.push({ code: warning.code, message: warning.message });
-              yield warning;
+              });
             }
 
             const validation = validateSpecV2(candidateSpec, { allowedComponentTypes });
@@ -1006,17 +984,19 @@ export async function* runGenerationV2(
 
             if (allIssues.length > 0) {
               lastValidationIssues = allIssues;
-              for (const issue of allIssues) {
-                const warning = {
-                  type: "warning" as const,
-                  generationId,
-                  code: issue.code,
-                  message: issue.message
-                };
-                warnings.push({ code: warning.code, message: warning.message });
-                yield warning;
-              }
+              attemptFailureIssues = allIssues;
               continue;
+            }
+
+            for (const warningIssue of candidateAcceptedWarnings) {
+              const warning = {
+                type: "warning" as const,
+                generationId,
+                code: warningIssue.code,
+                message: warningIssue.message
+              };
+              warnings.push({ code: warning.code, message: warning.message });
+              yield warning;
             }
 
             const patches = diffSpecs(canonicalSpec, candidateSpec);
@@ -1038,14 +1018,13 @@ export async function* runGenerationV2(
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Pass 2 stream failed unexpectedly.";
-        const warning = {
-          type: "warning" as const,
-          generationId,
-          code: "PASS2_STREAM_FAILED",
-          message
-        };
-        warnings.push({ code: warning.code, message: warning.message });
-        yield warning;
+        attemptFailureIssues = [
+          {
+            code: "PASS2_STREAM_FAILED",
+            message
+          }
+        ];
+        lastValidationIssues = attemptFailureIssues;
       }
 
       if (!observedObjectOnAttempt && !acceptedOnAttempt && lastValidationIssues.length === 0) {
@@ -1055,28 +1034,33 @@ export async function* runGenerationV2(
             message: "No valid JSON snapshots were produced in this attempt."
           }
         ];
+        attemptFailureIssues = lastValidationIssues;
       }
 
       if (acceptedOnAttempt) {
         break;
       }
 
-      if (attempt < MAX_PASS2_ATTEMPTS) {
-        const feedbackSummary = lastValidationIssues
-          .slice(0, 3)
-          .map((issue) => `[${issue.code}]`)
-          .join(", ");
-        const retryWarning = {
+      if (attemptFailureIssues.length > 0) {
+        lastValidationIssues = attemptFailureIssues;
+      }
+    }
+
+    if (!acceptedCandidate) {
+      const emittedCodes = new Set<string>();
+      for (const issue of lastValidationIssues) {
+        if (emittedCodes.has(issue.code)) {
+          continue;
+        }
+        emittedCodes.add(issue.code);
+        const warning = {
           type: "warning" as const,
           generationId,
-          code: "CONSTRAINT_RETRY",
-          message:
-            feedbackSummary.length > 0
-              ? `Retrying generation with validator feedback ${feedbackSummary} (attempt ${attempt + 1}/${MAX_PASS2_ATTEMPTS}).`
-              : `Retrying generation (attempt ${attempt + 1}/${MAX_PASS2_ATTEMPTS}).`
+          code: issue.code,
+          message: issue.message
         };
-        warnings.push({ code: retryWarning.code, message: retryWarning.message });
-        yield retryWarning;
+        warnings.push({ code: warning.code, message: warning.message });
+        yield warning;
       }
     }
 

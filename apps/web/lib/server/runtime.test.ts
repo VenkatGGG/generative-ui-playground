@@ -6,6 +6,7 @@ const originalEnv = {
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  globalThis.__generativeUiRuntimeDepsPromise__ = null;
   vi.resetModules();
 });
 
@@ -32,6 +33,20 @@ describe("runtime adapter selection", () => {
 
     const { getRuntimeDeps } = await import("./runtime");
     await expect(getRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
+  });
+
+  it("uses in-memory persistence for real mode when configured", async () => {
+    process.env.ADAPTER_MODE = "real";
+    process.env.PERSISTENCE_MODE = "memory";
+    process.env.GEMINI_API_KEY = "test-key";
+    delete process.env.MONGODB_URI;
+    delete process.env.MONGODB_DB_NAME;
+
+    const { getRuntimeDeps } = await import("./runtime");
+    const deps = await getRuntimeDeps();
+
+    const thread = await deps.persistence.createThreadV2({ title: "memory mode" });
+    expect(thread.threadId).toBeTruthy();
   });
 
   it("fails fast for openai provider when api key is missing", async () => {

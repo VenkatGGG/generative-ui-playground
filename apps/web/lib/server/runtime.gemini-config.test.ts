@@ -55,6 +55,7 @@ function buildMockRuntimeModules() {
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  globalThis.__generativeUiRuntimeDepsPromise__ = null;
   vi.resetModules();
   vi.clearAllMocks();
 });
@@ -106,5 +107,21 @@ describe("runtime gemini pass2 controls", () => {
         })
       })
     );
+  });
+
+  it("skips mongo connection when real mode uses memory persistence", async () => {
+    process.env.ADAPTER_MODE = "real";
+    process.env.PERSISTENCE_MODE = "memory";
+    process.env.LLM_PROVIDER = "gemini";
+    process.env.GEMINI_API_KEY = "test-key";
+    delete process.env.MONGODB_URI;
+    delete process.env.MONGODB_DB_NAME;
+
+    const mocks = buildMockRuntimeModules();
+    const { getRuntimeDeps } = await import("./runtime");
+    await getRuntimeDeps();
+
+    expect(mocks.createGenerationModelAdapter).toHaveBeenCalled();
+    expect(mocks.mongoConnect).not.toHaveBeenCalled();
   });
 });

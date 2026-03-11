@@ -397,7 +397,8 @@ describe("runGenerationV2", () => {
     expect(prompts[1]).toContain("Retry attempt 2");
     expect(prompts[1]).toContain("V2_SPARSE_OUTPUT");
     expect(prompts[1]).toContain("V2_REQUIRED_COMPONENT_MISSING");
-    expect(warningCodes).toContain("CONSTRAINT_RETRY");
+    expect(warningCodes).not.toContain("CONSTRAINT_RETRY");
+    expect(warningCodes).not.toContain("V2_REQUIRED_COMPONENT_MISSING");
     expect(eventTypes).toContain("done");
   });
 
@@ -535,7 +536,7 @@ describe("runGenerationV2", () => {
 
     expect(callCount).toBe(2);
     expect(fetchedComponents.some((entry) => entry.includes("Input") && entry.includes("Button"))).toBe(true);
-    expect(warningCodes).toContain("V2_TOOL_CALL_EXECUTED");
+    expect(warningCodes).not.toContain("V2_TOOL_CALL_EXECUTED");
     expect(eventTypes).toContain("done");
   });
 

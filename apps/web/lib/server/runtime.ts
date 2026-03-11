@@ -11,8 +11,12 @@ import { InMemoryPersistenceAdapter } from "@repo/persistence";
 import type { OrchestratorDeps } from "@repo/orchestrator";
 
 type RuntimeMode = "stub" | "real";
+type PersistenceMode = "mongo" | "memory";
 
-let runtimeDepsPromise: Promise<OrchestratorDeps> | null = null;
+declare global {
+  // Share runtime deps across Next route module contexts in dev.
+  var __generativeUiRuntimeDepsPromise__: Promise<OrchestratorDeps> | null | undefined;
+}
 
 function resolveMode(): RuntimeMode {
   const raw = process.env.ADAPTER_MODE?.toLowerCase();
@@ -30,6 +34,11 @@ function resolveLlmProvider(): LLMProvider {
   }
 
   throw new Error(`Unsupported LLM_PROVIDER '${raw}'. Supported providers: gemini, openai.`);
+}
+
+function resolvePersistenceMode(): PersistenceMode {
+  const raw = process.env.PERSISTENCE_MODE?.toLowerCase();
+  return raw === "memory" ? "memory" : "mongo";
 }
 
 function readEnv(name: string): string {
@@ -70,8 +79,6 @@ function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" | undefine
 }
 
 async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
-  const mongoUri = readEnv("MONGODB_URI");
-  const mongoDbName = readEnv("MONGODB_DB_NAME");
   const llmProvider = resolveLlmProvider();
 
   const modelConfig: ModelProviderConfig =
@@ -108,12 +115,18 @@ async function createRealRuntimeDeps(): Promise<OrchestratorDeps> {
     : createShadcnRegistryAdapter({
         itemUrlTemplate: process.env.SHADCN_REGISTRY_URL_TEMPLATE
       });
-
-  const { MongoPersistenceAdapter } = await import("@repo/persistence/mongo");
-  const persistence = await MongoPersistenceAdapter.connect({
-    uri: mongoUri,
-    dbName: mongoDbName
-  });
+  const persistence =
+    resolvePersistenceMode() === "memory"
+      ? new InMemoryPersistenceAdapter()
+      : await (async () => {
+          const mongoUri = readEnv("MONGODB_URI");
+          const mongoDbName = readEnv("MONGODB_DB_NAME");
+          const { MongoPersistenceAdapter } = await import("@repo/persistence/mongo");
+          return MongoPersistenceAdapter.connect({
+            uri: mongoUri,
+            dbName: mongoDbName
+          });
+        })();
 
   return {
     model,
@@ -135,12 +148,12 @@ async function createRuntimeDeps(): Promise<OrchestratorDeps> {
 }
 
 export function getRuntimeDeps(): Promise<OrchestratorDeps> {
-  if (!runtimeDepsPromise) {
-    runtimeDepsPromise = createRuntimeDeps().catch((error: unknown) => {
-      runtimeDepsPromise = null;
+  if (!globalThis.__generativeUiRuntimeDepsPromise__) {
+    globalThis.__generativeUiRuntimeDepsPromise__ = createRuntimeDeps().catch((error: unknown) => {
+      globalThis.__generativeUiRuntimeDepsPromise__ = null;
       throw error;
     });
   }
 
-  return runtimeDepsPromise;
+  return globalThis.__generativeUiRuntimeDepsPromise__;
 }
