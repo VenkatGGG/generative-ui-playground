@@ -44,12 +44,12 @@ function readEnv(name: string): string {
 function resolveGeminiPass2MaxOutputTokens(): number {
   const raw = process.env.GEMINI_PASS2_MAX_OUTPUT_TOKENS;
   if (!raw) {
-    return 2048;
+    return 4096;
   }
 
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 2048;
+    return 4096;
   }
 
   return parsed;

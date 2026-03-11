@@ -25,6 +25,7 @@ import { parseSseData } from "../shared/sse";
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
 const DEFAULT_PASS2_MODEL = "gemini-2.5-pro";
+const DEFAULT_PASS2_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_PASS2_THINKING_LEVEL: GeminiThinkingLevel = "LOW";
 const STREAM_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const STREAM_MAX_ATTEMPTS = 3;
@@ -406,7 +407,7 @@ export function createGeminiGenerationModel(
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const pass1Model = options.pass1Model ?? DEFAULT_PASS1_MODEL;
   const pass2Model = options.pass2Model ?? DEFAULT_PASS2_MODEL;
-  const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? 2048;
+  const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? DEFAULT_PASS2_MAX_OUTPUT_TOKENS;
   const pass2ThinkingLevel = options.pass2ThinkingLevel ?? DEFAULT_PASS2_THINKING_LEVEL;
   const pass2Config = {
     maxOutputTokens: pass2MaxOutputTokens,

@@ -138,7 +138,7 @@ describe("createGeminiGenerationModel", () => {
       };
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
-      expect(body.generationConfig?.maxOutputTokens).toBe(2048);
+      expect(body.generationConfig?.maxOutputTokens).toBe(4096);
       expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$schema");
       expect(body.generationConfig?.responseSchema).not.toHaveProperty("$ref");
@@ -193,7 +193,7 @@ describe("createGeminiGenerationModel", () => {
       };
 
       expect(body.generationConfig?.responseSchema).toBeDefined();
-      expect(body.generationConfig?.maxOutputTokens).toBe(2048);
+      expect(body.generationConfig?.maxOutputTokens).toBe(4096);
       expect(body.generationConfig?.thinkingConfig?.thinkingLevel).toBe("LOW");
       const responseSchema = body.generationConfig?.responseSchema as
         | { properties?: { tree?: { required?: string[]; properties?: Record<string, unknown> } } }
@@ -388,7 +388,7 @@ describe("createGeminiGenerationModel", () => {
     }
 
     expect(callCount).toBe(2);
-    expect(outputBudgets).toEqual([2048, 4096]);
+    expect(outputBudgets).toEqual([4096, 8192]);
     expect(chunks).toEqual(['{"tree":{"id":"root","type":"Card","children":[]}}']);
   });
 });
