@@ -314,6 +314,58 @@ describe("runGenerationV2", () => {
     expect(events).toEqual([{ type: "error", code: "BASE_VERSION_CONFLICT" }]);
   });
 
+  it("falls back to prompt-derived pass1 components when extraction fails", async () => {
+    const deps = createDeps();
+    const fetchedComponents: string[][] = [];
+
+    deps.model = {
+      ...deps.model,
+      async extractComponents() {
+        throw new Error("Gemini request timed out after 15000ms");
+      }
+    };
+    deps.mcp = {
+      async fetchContext(componentNames) {
+        fetchedComponents.push(componentNames);
+        return {
+          contextVersion: "ctx-fallback",
+          componentRules: componentNames.map((name) => ({
+            name,
+            allowedProps: [],
+            variants: [],
+            compositionRules: [],
+            supportedEvents: [],
+            bindingHints: [],
+            notes: ""
+          }))
+        };
+      }
+    };
+
+    const warningCodes: string[] = [];
+    const eventTypes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt: "Create a premium pricing card for Pro Plan with price and CTA buttons",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      eventTypes.push(event.type);
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(warningCodes).toContain("PASS1_EXTRACT_FALLBACK");
+    expect(fetchedComponents[0]).toEqual(
+      expect.arrayContaining(["Card", "CardHeader", "CardContent", "CardFooter", "Text", "Button"])
+    );
+    expect(eventTypes).toContain("patch");
+    expect(eventTypes).toContain("done");
+  });
+
   it("retries v2 pass2 using validator feedback before succeeding", async () => {
     const deps = createDeps();
     const prompts: string[] = [];

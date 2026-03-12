@@ -118,6 +118,36 @@ describe("createGeminiGenerationModel", () => {
     expect(result.confidence).toBe(0.96);
   });
 
+  it("times out stalled pass1 requests", async () => {
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      callCount += 1;
+      const signal = init?.signal as AbortSignal | undefined;
+
+      return await new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          const abortError = new Error("The operation was aborted.");
+          abortError.name = "AbortError";
+          reject(abortError);
+        });
+      });
+    };
+
+    const adapter = createGeminiGenerationModel({
+      apiKey: "test-key",
+      fetchImpl,
+      pass1TimeoutMs: 5
+    });
+
+    await expect(
+      adapter.extractComponents({
+        prompt: "build a hero section",
+        previousSpec: null
+      })
+    ).rejects.toThrow(/timed out/i);
+    expect(callCount).toBe(3);
+  });
+
   it("streams pass2 chunks from gemini sse payload", async () => {
     const ssePayload = [
       'data: {"candidates":[{"content":{"parts":[{"text":"{\\"id\\":\\"root\\",\\"type\\":\\"Card\\"}\\n"}]}}]}',

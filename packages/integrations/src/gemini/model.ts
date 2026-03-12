@@ -27,6 +27,8 @@ const DEFAULT_PASS1_MODEL = "gemini-2.5-flash";
 const DEFAULT_PASS2_MODEL = "gemini-2.5-pro";
 const DEFAULT_PASS2_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_PASS2_THINKING_LEVEL: GeminiThinkingLevel = "LOW";
+const DEFAULT_PASS1_TIMEOUT_MS = 15_000;
+const DEFAULT_PASS2_REQUEST_TIMEOUT_MS = 30_000;
 const STREAM_RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const STREAM_MAX_ATTEMPTS = 3;
 const STREAM_RETRY_BASE_DELAY_MS = 600;
@@ -41,6 +43,8 @@ export interface GeminiGenerationModelOptions {
   pass2Model?: string;
   pass2MaxOutputTokens?: number;
   pass2ThinkingLevel?: GeminiThinkingLevel;
+  pass1TimeoutMs?: number;
+  pass2RequestTimeoutMs?: number;
   baseUrl?: string;
   fetchImpl?: FetchLike;
 }
@@ -277,16 +281,33 @@ function extractFinishReasonFromGeminiPayload(payload: unknown): string | null {
 async function callGemini(
   fetchImpl: FetchLike,
   endpoint: string,
-  request: GeminiGenerateRequest
+  request: GeminiGenerateRequest,
+  timeoutMs: number
 ): Promise<string> {
   for (let attempt = 1; attempt <= STREAM_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetchImpl(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(request)
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const response = await Promise.race([
+        fetchImpl(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(request),
+          signal: controller.signal
+        }),
+        new Promise<Response>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort();
+            reject(new Error(`Gemini request timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
+        })
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       });
 
       if (!response.ok) {
@@ -301,12 +322,17 @@ async function callGemini(
       const payload = (await response.json()) as unknown;
       return extractTextFromGeminiPayload(payload);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const normalizedError =
+        error instanceof Error && error.name === "AbortError"
+          ? new Error(`Gemini request timed out after ${timeoutMs}ms`)
+          : error;
+      const message =
+        normalizedError instanceof Error ? normalizedError.message : String(normalizedError);
       if (attempt < STREAM_MAX_ATTEMPTS && isRetryableTransportError(message)) {
         await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
         continue;
       }
-      throw error;
+      throw normalizedError;
     }
   }
 
@@ -316,17 +342,34 @@ async function callGemini(
 async function* streamGemini(
   fetchImpl: FetchLike,
   endpoint: string,
-  request: GeminiGenerateRequest
+  request: GeminiGenerateRequest,
+  timeoutMs: number
 ): AsyncGenerator<string> {
   let currentRequest = request;
   for (let attempt = 1; attempt <= STREAM_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetchImpl(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(currentRequest)
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const response = await Promise.race([
+        fetchImpl(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(currentRequest),
+          signal: controller.signal
+        }),
+        new Promise<Response>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort();
+            reject(new Error(`Gemini stream request timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
+        })
+      ]).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       });
 
       if (!response.ok) {
@@ -389,13 +432,18 @@ async function* streamGemini(
       }
       return;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const normalizedError =
+        error instanceof Error && error.name === "AbortError"
+          ? new Error(`Gemini stream request timed out after ${timeoutMs}ms`)
+          : error;
+      const message =
+        normalizedError instanceof Error ? normalizedError.message : String(normalizedError);
       if (attempt < STREAM_MAX_ATTEMPTS && isRetryableTransportError(message)) {
         await sleep(STREAM_RETRY_BASE_DELAY_MS * attempt);
         continue;
       }
 
-      throw error;
+      throw normalizedError;
     }
   }
 }
@@ -409,6 +457,8 @@ export function createGeminiGenerationModel(
   const pass2Model = options.pass2Model ?? DEFAULT_PASS2_MODEL;
   const pass2MaxOutputTokens = options.pass2MaxOutputTokens ?? DEFAULT_PASS2_MAX_OUTPUT_TOKENS;
   const pass2ThinkingLevel = options.pass2ThinkingLevel ?? DEFAULT_PASS2_THINKING_LEVEL;
+  const pass1TimeoutMs = options.pass1TimeoutMs ?? DEFAULT_PASS1_TIMEOUT_MS;
+  const pass2RequestTimeoutMs = options.pass2RequestTimeoutMs ?? DEFAULT_PASS2_REQUEST_TIMEOUT_MS;
   const pass2Config = {
     maxOutputTokens: pass2MaxOutputTokens,
     thinkingLevel: pass2ThinkingLevel
@@ -417,7 +467,7 @@ export function createGeminiGenerationModel(
   return {
     async extractComponents(input) {
       const endpoint = buildGenerateEndpoint(baseUrl, pass1Model, options.apiKey);
-      const raw = await callGemini(fetchImpl, endpoint, toRequest(toPass1Prompt(input)));
+      const raw = await callGemini(fetchImpl, endpoint, toRequest(toPass1Prompt(input)), pass1TimeoutMs);
       const parsed = safeJsonParse(raw);
       return normalizeExtractComponentsResult(parsed, input.prompt);
     },
@@ -426,7 +476,8 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA, pass2Config)
+        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA, pass2Config),
+        pass2RequestTimeoutMs
       );
     },
     streamDesignV2(input) {
@@ -434,7 +485,8 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA, pass2Config)
+        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA, pass2Config),
+        pass2RequestTimeoutMs
       );
     }
   };

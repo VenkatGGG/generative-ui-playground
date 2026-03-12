@@ -20,6 +20,8 @@ import {
   detectPromptPack,
   estimatePromptPackMinElements,
   extractStyleTokens,
+  type ExtractComponentsResult,
+  getFallbackPromptComponents,
   type GenerationModelAdapter,
   type MCPAdapter
 } from "@repo/integrations";
@@ -813,10 +815,46 @@ export async function* runGenerationV2(
       } satisfies UISpecV2);
 
     yield { type: "status", generationId, stage: "pass1_extract_components_v2" };
-    const pass1 = await deps.model.extractComponents({
-      prompt: request.prompt,
-      previousSpec: baseVersion?.specSnapshot ?? null
-    });
+    let pass1: ExtractComponentsResult;
+    try {
+      pass1 = await deps.model.extractComponents({
+        prompt: request.prompt,
+        previousSpec: baseVersion?.specSnapshot ?? null
+      });
+    } catch (error) {
+      const fallbackComponents = getFallbackPromptComponents(request.prompt);
+      const message =
+        error instanceof Error ? error.message : "Pass 1 component extraction failed unexpectedly.";
+      const warning = {
+        type: "warning" as const,
+        generationId,
+        code: "PASS1_EXTRACT_FALLBACK",
+        message: `Pass 1 extraction failed (${message}). Using prompt-derived component set: ${fallbackComponents.join(", ")}.`
+      };
+      warnings.push({ code: warning.code, message: warning.message });
+      yield warning;
+      pass1 = {
+        components: fallbackComponents,
+        intentType: baseVersion?.specSnapshot ? "modify" : "new",
+        confidence: 0
+      };
+    }
+
+    if (pass1.components.length === 0) {
+      const fallbackComponents = getFallbackPromptComponents(request.prompt);
+      const warning = {
+        type: "warning" as const,
+        generationId,
+        code: "PASS1_EMPTY_COMPONENTS",
+        message: `Pass 1 returned no components. Using prompt-derived component set: ${fallbackComponents.join(", ")}.`
+      };
+      warnings.push({ code: warning.code, message: warning.message });
+      yield warning;
+      pass1 = {
+        ...pass1,
+        components: fallbackComponents
+      };
+    }
 
     yield { type: "status", generationId, stage: "mcp_fetch_context_v2" };
     const mcpContext = await deps.mcp.fetchContext(pass1.components);

@@ -11,6 +11,19 @@ import { detectPromptPack } from "./prompt-skill";
 const EXPLICIT_COMPONENT_TYPES = Array.from(
   new Set([...ALLOWED_COMPONENT_TYPES, ...ALLOWED_COMPONENT_TYPES_V2])
 ).sort((left, right) => right.length - left.length);
+const GENERIC_FALLBACK_COMPONENTS = [
+  "Card",
+  "CardHeader",
+  "CardTitle",
+  "CardDescription",
+  "CardContent",
+  "CardFooter",
+  "Text",
+  "Button",
+  "Badge",
+  "Stack",
+  "Separator"
+] as const;
 const PACK_COMPONENT_ALLOWLISTS = {
   "pricing-card": new Set([
     "Card",
@@ -106,13 +119,25 @@ function curateComponentsForPrompt(components: string[], prompt?: string): strin
   return curated.length > 0 ? curated : components;
 }
 
+export function getFallbackPromptComponents(prompt: string): string[] {
+  const explicit = extractExplicitPromptComponents(prompt);
+  const pack = detectPromptPack(prompt);
+  const packComponents =
+    pack === "generic" ? [...GENERIC_FALLBACK_COMPONENTS] : [...PACK_COMPONENT_ALLOWLISTS[pack]];
+
+  return canonicalizeRequestedComponents([...packComponents, ...explicit]);
+}
+
 export function normalizeExtractComponentsResult(
   parsed: unknown,
   prompt?: string
 ): ExtractComponentsResult {
+  const explicitPromptComponents = prompt ? extractExplicitPromptComponents(prompt) : [];
+  const fallbackPromptComponents = prompt ? getFallbackPromptComponents(prompt) : [];
+
   if (!parsed || typeof parsed !== "object") {
     return {
-      components: prompt ? extractExplicitPromptComponents(prompt) : [],
+      components: fallbackPromptComponents,
       intentType: "new",
       confidence: 0
     };
@@ -127,10 +152,18 @@ export function normalizeExtractComponentsResult(
   const parsedComponents = Array.isArray(record.components)
     ? record.components.filter((item): item is string => typeof item === "string")
     : [];
+  if (parsedComponents.length === 0) {
+    return {
+      components: fallbackPromptComponents,
+      intentType: record.intentType === "modify" ? "modify" : "new",
+      confidence: 0
+    };
+  }
+
   const components = curateComponentsForPrompt(
     canonicalizeRequestedComponents([
       ...parsedComponents,
-      ...(prompt ? extractExplicitPromptComponents(prompt) : [])
+      ...explicitPromptComponents
     ]),
     prompt
   );
@@ -139,7 +172,7 @@ export function normalizeExtractComponentsResult(
   const rawConfidence = typeof record.confidence === "number" ? record.confidence : 0;
 
   return {
-    components,
+    components: components.length > 0 ? components : fallbackPromptComponents,
     intentType,
     confidence: Math.max(0, Math.min(1, rawConfidence))
   };
