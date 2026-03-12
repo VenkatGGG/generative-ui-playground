@@ -6,6 +6,7 @@ const config: Config = {
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
     "./lib/**/*.{ts,tsx}",
+    "../../packages/orchestrator/src/**/*.{ts,tsx}",
     "../../packages/renderer-react/src/**/*.{ts,tsx}"
   ],
   theme: {
