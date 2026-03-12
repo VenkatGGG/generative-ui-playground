@@ -310,6 +310,579 @@ function primaryButtonClassName(prompt: string): string {
   return "";
 }
 
+interface FormFieldBlueprint {
+  key: string;
+  id: string;
+  type: "Input" | "Textarea" | "Select" | "Checkbox";
+  placeholder?: string;
+  label?: string;
+  inputType?: string;
+  options?: Array<{ label: string; value: string }>;
+}
+
+interface FormBlueprint {
+  title: string;
+  description: string;
+  submitLabel: string;
+  secondaryLabel?: string;
+  fields: FormFieldBlueprint[];
+}
+
+function toKebabCase(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+}
+
+function fieldLabelForKey(key: string): string {
+  switch (key) {
+    case "displayName":
+      return "Display name";
+    case "email":
+      return "Email";
+    case "password":
+      return "Password";
+    case "message":
+      return "Message";
+    case "marketingOptIn":
+      return "I want product updates";
+    case "newsletter":
+      return "Subscribe to newsletter";
+    case "consent":
+      return "I agree to updates";
+    case "phone":
+      return "Phone";
+    case "company":
+      return "Company";
+    case "role":
+      return "Role";
+    case "name":
+      return "Name";
+    default:
+      return key.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
+  }
+}
+
+function fieldPlaceholderForKey(key: string): string | undefined {
+  switch (key) {
+    case "displayName":
+      return "Display name";
+    case "email":
+      return "you@company.com";
+    case "password":
+      return "Enter your password";
+    case "message":
+      return "Tell us a bit more...";
+    case "phone":
+      return "Phone number";
+    case "company":
+      return "Company name";
+    case "name":
+      return "Your name";
+    default:
+      return undefined;
+  }
+}
+
+function collectElementTextFromSpec(spec: UISpecV2, elementId: string, seen = new Set<string>()): string {
+  if (seen.has(elementId)) {
+    return "";
+  }
+  seen.add(elementId);
+
+  const element = spec.elements[elementId];
+  if (!element) {
+    return "";
+  }
+
+  if (element.type === "Text" && typeof element.props.text === "string") {
+    return element.props.text;
+  }
+
+  return element.children
+    .map((childId) => collectElementTextFromSpec(spec, childId, seen))
+    .filter((value) => value.length > 0)
+    .join(" ")
+    .trim();
+}
+
+function firstTextFromTypes(spec: UISpecV2, types: string[]): string | null {
+  for (const [id, element] of Object.entries(spec.elements)) {
+    if (!types.includes(element.type)) {
+      continue;
+    }
+    const text = collectElementTextFromSpec(spec, id);
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function extractButtonTexts(spec: UISpecV2): string[] {
+  return Object.entries(spec.elements)
+    .filter(([, element]) => element.type === "Button")
+    .map(([id]) => collectElementTextFromSpec(spec, id))
+    .filter((text) => text.length > 0);
+}
+
+function inferFormFieldKey(raw: string, type: FormFieldBlueprint["type"]): string {
+  const normalized = raw.toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized.includes("display name")) {
+    return "displayName";
+  }
+  if (normalized.includes("email")) {
+    return "email";
+  }
+  if (normalized.includes("password")) {
+    return "password";
+  }
+  if (normalized.includes("phone")) {
+    return "phone";
+  }
+  if (normalized.includes("company")) {
+    return "company";
+  }
+  if (normalized.includes("marketing") || normalized.includes("opt in")) {
+    return "marketingOptIn";
+  }
+  if (normalized.includes("newsletter")) {
+    return "newsletter";
+  }
+  if (normalized.includes("consent") || normalized.includes("agree")) {
+    return "consent";
+  }
+  if (normalized.includes("role")) {
+    return "role";
+  }
+  if (normalized.includes("message") || normalized.includes("comment") || normalized.includes("feedback")) {
+    return "message";
+  }
+  if (normalized.includes("name")) {
+    return "name";
+  }
+  return type === "Checkbox" ? "consent" : "field";
+}
+
+function inferFormFieldsFromPrompt(prompt: string): FormFieldBlueprint[] {
+  const lower = prompt.toLowerCase();
+  const descriptors: Array<FormFieldBlueprint & { index: number }> = [];
+
+  const addDescriptor = (
+    matcher: RegExp,
+    field: Omit<FormFieldBlueprint, "id">,
+    id?: string
+  ) => {
+    const match = matcher.exec(lower);
+    if (!match || match.index < 0) {
+      return;
+    }
+    descriptors.push({
+      ...field,
+      id: id ?? toKebabCase(field.key),
+      index: match.index
+    });
+  };
+
+  addDescriptor(/\bdisplay name\b/, { key: "displayName", type: "Input", placeholder: "Display name" });
+  addDescriptor(/\bemail\b/, { key: "email", type: "Input", placeholder: "you@company.com" });
+  addDescriptor(/\bpassword\b/, { key: "password", type: "Input", placeholder: "Enter your password", inputType: "password" });
+  addDescriptor(/\bphone\b/, { key: "phone", type: "Input", placeholder: "Phone number" });
+  addDescriptor(/\bcompany\b/, { key: "company", type: "Input", placeholder: "Company name" });
+  addDescriptor(/\b(role|select)\b/, {
+    key: "role",
+    type: "Select",
+    options: [
+      { label: "Developer", value: "developer" },
+      { label: "Designer", value: "designer" },
+      { label: "Product", value: "product" }
+    ]
+  });
+  addDescriptor(/\b(message|feedback|comment|notes?)\b/, { key: "message", type: "Textarea", placeholder: "Tell us a bit more..." });
+  const hasSpecificOptIn = /\b(marketing opt[- ]?in|marketing|newsletter|updates)\b/.test(lower);
+  addDescriptor(/\b(marketing opt[- ]?in|marketing|newsletter|updates)\b/, {
+    key: "marketingOptIn",
+    type: "Checkbox",
+    label: "I want product updates"
+  });
+  if (!hasSpecificOptIn) {
+    addDescriptor(/\b(consent|agree|checkbox)\b/, {
+      key: "consent",
+      type: "Checkbox",
+      label: "I agree to updates"
+    });
+  }
+  if (!/\bdisplay name\b/.test(lower)) {
+    addDescriptor(/\bname\b/, { key: "name", type: "Input", placeholder: "Your name" });
+  }
+
+  const unique = new Map<string, FormFieldBlueprint & { index: number }>();
+  for (const descriptor of descriptors.sort((left, right) => left.index - right.index)) {
+    if (!unique.has(descriptor.key)) {
+      unique.set(descriptor.key, descriptor);
+    }
+  }
+
+  return Array.from(unique.values()).map(({ index: _index, ...field }) => field);
+}
+
+function inferFormFieldsFromSpec(spec: UISpecV2): FormFieldBlueprint[] {
+  const fields = new Map<string, FormFieldBlueprint>();
+
+  for (const [id, element] of Object.entries(spec.elements)) {
+    if (!["Input", "Textarea", "Select", "Checkbox"].includes(element.type)) {
+      continue;
+    }
+
+    const placeholder =
+      typeof element.props.placeholder === "string" ? element.props.placeholder : undefined;
+    const label = typeof element.props.label === "string" ? element.props.label : undefined;
+    const inputType = typeof element.props.type === "string" ? element.props.type : undefined;
+    const sourceText = [id, placeholder, label].filter((value): value is string => !!value).join(" ");
+    const key = inferFormFieldKey(sourceText || id, element.type as FormFieldBlueprint["type"]);
+    const nextField: FormFieldBlueprint = {
+      key,
+      id: toKebabCase(id || key),
+      type: element.type as FormFieldBlueprint["type"],
+      ...(placeholder ? { placeholder } : {}),
+      ...(label ? { label } : {}),
+      ...(inputType ? { inputType } : {})
+    };
+
+    if (element.type === "Select" && Array.isArray(element.props.options)) {
+      const options = (element.props.options as unknown[])
+        .filter(
+          (entry): entry is { label: string; value: string } =>
+            !!entry &&
+            typeof entry === "object" &&
+            typeof (entry as { label?: unknown }).label === "string" &&
+            typeof (entry as { value?: unknown }).value === "string"
+        )
+        .map((entry) => ({ label: entry.label, value: entry.value }));
+      if (options.length > 0) {
+        nextField.options = options;
+      }
+    }
+
+    if (!fields.has(key)) {
+      fields.set(key, nextField);
+      continue;
+    }
+
+    const previous = fields.get(key)!;
+    fields.set(key, {
+      ...previous,
+      ...nextField,
+      placeholder: nextField.placeholder ?? previous.placeholder,
+      label: nextField.label ?? previous.label,
+      inputType: nextField.inputType ?? previous.inputType,
+      options: nextField.options ?? previous.options
+    });
+  }
+
+  return Array.from(fields.values());
+}
+
+function inferFormTitle(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  if (/\b(account|settings|profile)\b/.test(lower)) {
+    return "Account Settings";
+  }
+  if (/\bcontact\b/.test(lower)) {
+    return "Contact Us";
+  }
+  if (/\b(login|sign in)\b/.test(lower)) {
+    return "Sign In";
+  }
+  if (/\b(sign up|create account|join)\b/.test(lower)) {
+    return "Create Account";
+  }
+  if (/\b(waitlist)\b/.test(lower)) {
+    return "Join the Waitlist";
+  }
+  if (/\b(request access|invite)\b/.test(lower)) {
+    return "Request Access";
+  }
+  return "Form";
+}
+
+function inferFormDescription(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  if (/\b(account|settings|profile)\b/.test(lower)) {
+    return "Manage your account details and preferences.";
+  }
+  if (/\bcontact\b/.test(lower)) {
+    return "Share a few details and we will follow up shortly.";
+  }
+  if (/\b(login|sign in)\b/.test(lower)) {
+    return "Enter your credentials to continue.";
+  }
+  if (/\b(sign up|create account|join)\b/.test(lower)) {
+    return "Tell us a bit about yourself to get started.";
+  }
+  return summarizePrompt(prompt);
+}
+
+function inferPrimaryFormAction(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  if (/\bsave changes?\b/.test(lower)) {
+    return "Save Changes";
+  }
+  if (/\b(sign in|login)\b/.test(lower)) {
+    return "Sign In";
+  }
+  if (/\b(sign up|create account)\b/.test(lower)) {
+    return "Create Account";
+  }
+  if (/\b(request invite|request access)\b/.test(lower)) {
+    return "Request Invite";
+  }
+  if (/\b(waitlist|join)\b/.test(lower)) {
+    return "Join Waitlist";
+  }
+  if (/\bcontact\b/.test(lower)) {
+    return "Send Message";
+  }
+  return "Submit";
+}
+
+function inferSecondaryFormAction(prompt: string): string | undefined {
+  const lower = prompt.toLowerCase();
+  if (/\b(cancel)\b/.test(lower)) {
+    return "Cancel";
+  }
+  if (/\b(view docs|docs)\b/.test(lower)) {
+    return "View Docs";
+  }
+  if (/\b(learn more)\b/.test(lower)) {
+    return "Learn More";
+  }
+  return undefined;
+}
+
+function buildFormBlueprint(prompt: string, candidateSpec?: UISpecV2): FormBlueprint {
+  const promptFields = inferFormFieldsFromPrompt(prompt);
+  const candidateFields = candidateSpec ? inferFormFieldsFromSpec(candidateSpec) : [];
+  const fieldMap = new Map<string, FormFieldBlueprint>();
+
+  for (const field of promptFields) {
+    fieldMap.set(field.key, field);
+  }
+  for (const field of candidateFields) {
+    const previous = fieldMap.get(field.key);
+    fieldMap.set(field.key, {
+      ...(previous ?? {}),
+      ...field,
+      placeholder: field.placeholder ?? previous?.placeholder,
+      label: field.label ?? previous?.label,
+      inputType: field.inputType ?? previous?.inputType,
+      options: field.options ?? previous?.options
+    } as FormFieldBlueprint);
+  }
+
+  if (fieldMap.size === 0) {
+    fieldMap.set("email", {
+      key: "email",
+      id: "email",
+      type: "Input",
+      placeholder: "you@company.com"
+    });
+  }
+
+  const title =
+    (candidateSpec ? firstTextFromTypes(candidateSpec, ["CardTitle"]) : null) ?? inferFormTitle(prompt);
+  const description =
+    (candidateSpec ? firstTextFromTypes(candidateSpec, ["CardDescription"]) : null) ??
+    inferFormDescription(prompt);
+
+  const buttonTexts = candidateSpec ? extractButtonTexts(candidateSpec) : [];
+  const primaryCandidate =
+    buttonTexts.find((text) => !/\b(cancel|docs|learn more|secondary|back)\b/i.test(text)) ?? buttonTexts[0];
+  const secondaryCandidate = buttonTexts.find((text) =>
+    /\b(cancel|docs|learn more|secondary|back)\b/i.test(text)
+  );
+
+  return {
+    title,
+    description,
+    submitLabel: primaryCandidate ?? inferPrimaryFormAction(prompt),
+    secondaryLabel: secondaryCandidate ?? inferSecondaryFormAction(prompt),
+    fields: Array.from(fieldMap.values()).map((field) => ({
+      ...field,
+      id: field.id || toKebabCase(field.key),
+      placeholder: field.placeholder ?? fieldPlaceholderForKey(field.key),
+      label: field.label ?? (field.type === "Checkbox" ? fieldLabelForKey(field.key) : undefined),
+      options:
+        field.type === "Select"
+          ? field.options ?? [
+              { label: "Option 1", value: "option-1" },
+              { label: "Option 2", value: "option-2" }
+            ]
+          : undefined
+    }))
+  };
+}
+
+function buildFormSnapshotFromBlueprint(blueprint: FormBlueprint): UITreeSnapshotV2 {
+  const requiredKeys = blueprint.fields
+    .filter((field) => field.type !== "Checkbox")
+    .map((field) => field.key);
+  const footerChildren = ["submit"];
+  if (blueprint.secondaryLabel) {
+    footerChildren.push("secondary");
+  }
+
+  return {
+    state: {
+      form: Object.fromEntries(
+        blueprint.fields.map((field) => [
+          field.key,
+          field.type === "Checkbox" ? false : field.type === "Select" ? field.options?.[0]?.value ?? "" : ""
+        ])
+      )
+    },
+    tree: {
+      id: "root",
+      type: "Card",
+      props: { className: "w-full max-w-xl border shadow-sm" },
+      children: [
+        {
+          id: "header",
+          type: "CardHeader",
+          children: [
+            { id: "title", type: "CardTitle", children: [blueprint.title] },
+            { id: "description", type: "CardDescription", children: [blueprint.description] }
+          ]
+        },
+        {
+          id: "content",
+          type: "CardContent",
+          children: [
+            {
+              id: "fields",
+              type: "Stack",
+              props: { direction: "vertical", gap: "gap-3" },
+              children: blueprint.fields.map((field) => field.id)
+            }
+          ]
+        },
+        {
+          id: "footer",
+          type: "CardFooter",
+          props: { className: "flex flex-col gap-3 sm:flex-row" },
+          children: footerChildren
+        }
+      ]
+    }
+  };
+}
+
+function createFormFieldElements(blueprint: FormBlueprint): UIComponentNodeV2[] {
+  return blueprint.fields.map((field) => {
+    if (field.type === "Checkbox") {
+      return {
+        id: field.id,
+        type: "Checkbox",
+        props: {
+          label: field.label ?? fieldLabelForKey(field.key),
+          checked: { $bindState: `/form/${field.key}` }
+        },
+        children: []
+      } satisfies UIComponentNodeV2;
+    }
+
+    if (field.type === "Textarea") {
+      return {
+        id: field.id,
+        type: "Textarea",
+        props: {
+          placeholder: field.placeholder ?? fieldPlaceholderForKey(field.key),
+          value: { $bindState: `/form/${field.key}` },
+          rows: 5
+        },
+        children: []
+      } satisfies UIComponentNodeV2;
+    }
+
+    if (field.type === "Select") {
+      return {
+        id: field.id,
+        type: "Select",
+        props: {
+          options:
+            field.options ?? [
+              { label: "Option 1", value: "option-1" },
+              { label: "Option 2", value: "option-2" }
+            ],
+          value: { $bindState: `/form/${field.key}` }
+        },
+        children: []
+      } satisfies UIComponentNodeV2;
+    }
+
+    return {
+      id: field.id,
+      type: "Input",
+      props: {
+        ...(field.inputType ? { type: field.inputType } : {}),
+        placeholder: field.placeholder ?? fieldPlaceholderForKey(field.key),
+        value: { $bindState: `/form/${field.key}` }
+      },
+      children: []
+    } satisfies UIComponentNodeV2;
+  });
+}
+
+function buildFormSnapshotV2(prompt: string, candidateSpec?: UISpecV2): UITreeSnapshotV2 {
+  const blueprint = buildFormBlueprint(prompt, candidateSpec);
+  const snapshot = buildFormSnapshotFromBlueprint(blueprint);
+  const fieldElements = createFormFieldElements(blueprint);
+  const footerChildren = snapshot.tree.children?.[2];
+
+  if (footerChildren && typeof footerChildren !== "string" && footerChildren.type === "CardFooter") {
+    footerChildren.children = [
+      {
+        id: "submit",
+        type: "Button",
+        props: { className: `w-full sm:flex-1 ${primaryButtonClassName(prompt)}`.trim() },
+        on: {
+          press: {
+            action: "validateForm",
+            params: {
+              path: "/form",
+              required: blueprint.fields.filter((field) => field.type !== "Checkbox").map((field) => field.key)
+            }
+          }
+        },
+        children: [blueprint.submitLabel]
+      },
+      ...(blueprint.secondaryLabel
+        ? [
+            {
+              id: "secondary",
+              type: "Button",
+              props: { variant: "outline", className: "w-full sm:flex-1" },
+              children: [blueprint.secondaryLabel]
+            } satisfies UIComponentNodeV2
+          ]
+        : [])
+    ];
+  }
+
+  const fieldsStack = snapshot.tree.children?.[1];
+  if (fieldsStack && typeof fieldsStack !== "string" && fieldsStack.type === "CardContent") {
+    const stack = fieldsStack.children?.[0];
+    if (stack && typeof stack !== "string" && stack.type === "Stack") {
+      stack.children = fieldElements;
+      fieldsStack.children = [stack];
+    }
+  }
+
+  return snapshot;
+}
+
 function buildPricingFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
   return {
     state: {
@@ -388,74 +961,7 @@ function buildPricingFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
 }
 
 function buildFormFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
-  return {
-    state: {
-      form: {
-        name: "",
-        email: "",
-        message: "",
-        accepted: false
-      }
-    },
-    tree: {
-      id: "root",
-      type: "Card",
-      props: { className: "w-full max-w-xl border shadow-sm" },
-      children: [
-        {
-          id: "header",
-          type: "CardHeader",
-          children: [
-            { id: "title", type: "CardTitle", children: ["Contact Us"] },
-            { id: "description", type: "CardDescription", children: [summarizePrompt(prompt)] }
-          ]
-        },
-        { id: "divider", type: "Separator", children: [] },
-        {
-          id: "content",
-          type: "CardContent",
-          children: [
-            {
-              id: "fields",
-              type: "Stack",
-              props: { direction: "vertical", gap: "gap-3" },
-              children: [
-                { id: "name", type: "Input", props: { placeholder: "Name", value: { $bindState: "/form/name" } }, children: [] },
-                { id: "email", type: "Input", props: { placeholder: "Email", value: { $bindState: "/form/email" } }, children: [] },
-                { id: "message", type: "Textarea", props: { placeholder: "Message", value: { $bindState: "/form/message" }, rows: 5 }, children: [] },
-                {
-                  id: "accepted",
-                  type: "Checkbox",
-                  props: { label: "I agree to be contacted", checked: { $bindState: "/form/accepted" } },
-                  children: []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          id: "footer",
-          type: "CardFooter",
-          props: { className: "flex flex-col gap-3 sm:flex-row" },
-          children: [
-            {
-              id: "submit",
-              type: "Button",
-              props: { className: `w-full sm:flex-1 ${primaryButtonClassName(prompt)}`.trim() },
-              on: { press: { action: "validateForm", params: { path: "/form", required: ["name", "email", "message"] } } },
-              children: ["Send Message"]
-            },
-            {
-              id: "secondary",
-              type: "Button",
-              props: { variant: "outline", className: "w-full sm:flex-1" },
-              children: ["View Docs"]
-            }
-          ]
-        }
-      ]
-    }
-  };
+  return buildFormSnapshotV2(prompt);
 }
 
 function buildDashboardFallbackSnapshotV2(prompt: string): UITreeSnapshotV2 {
@@ -742,6 +1248,93 @@ function autoFixPackSpecV2(spec: UISpecV2, prompt: string): { spec: UISpecV2; fi
   };
 }
 
+function isFormControlBound(element: UISpecV2["elements"][string]): boolean {
+  if (element.type === "Checkbox") {
+    const checked = element.props.checked;
+    return (
+      !!checked &&
+      typeof checked === "object" &&
+      !Array.isArray(checked) &&
+      typeof (checked as { $bindState?: unknown }).$bindState === "string"
+    );
+  }
+
+  if (element.type === "Input" || element.type === "Textarea" || element.type === "Select") {
+    const value = element.props.value;
+    return (
+      !!value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof (value as { $bindState?: unknown }).$bindState === "string"
+    );
+  }
+
+  return true;
+}
+
+function hasValidateFormAction(spec: UISpecV2): boolean {
+  return Object.values(spec.elements).some((element) => {
+    if (element.type !== "Button" || !element.on) {
+      return false;
+    }
+
+    const pressBinding = element.on.press;
+    const bindings = Array.isArray(pressBinding) ? pressBinding : pressBinding ? [pressBinding] : [];
+    return bindings.some((binding) => binding.action === "validateForm");
+  });
+}
+
+function requiresFormScaffold(spec: UISpecV2, prompt: string): boolean {
+  if (detectPromptPack(prompt) !== "form") {
+    return false;
+  }
+
+  if (!isUsableSpecForPromptPackV2(spec, prompt)) {
+    return true;
+  }
+
+  const formElements = Object.values(spec.elements).filter((element) =>
+    ["Card", "CardHeader", "CardContent", "CardFooter", "Input", "Textarea", "Select", "Checkbox", "Button"].includes(element.type)
+  );
+
+  if (formElements.some((element) => element.visible === false)) {
+    return true;
+  }
+
+  if (!spec.state || typeof spec.state !== "object" || !("form" in spec.state)) {
+    return true;
+  }
+
+  const controls = formElements.filter((element) =>
+    ["Input", "Textarea", "Select", "Checkbox"].includes(element.type)
+  );
+  if (controls.some((element) => !isFormControlBound(element))) {
+    return true;
+  }
+
+  if (!hasValidateFormAction(spec)) {
+    return true;
+  }
+
+  return false;
+}
+
+function autoScaffoldFormSpecV2(spec: UISpecV2, prompt: string): { spec: UISpecV2; fixes: string[] } {
+  if (detectPromptPack(prompt) !== "form") {
+    return { spec, fixes: [] };
+  }
+
+  if (!requiresFormScaffold(spec, prompt)) {
+    return { spec, fixes: [] };
+  }
+
+  const scaffoldedSpec = normalizeTreeToSpecV2(buildFormSnapshotV2(prompt, spec));
+  return {
+    spec: scaffoldedSpec,
+    fixes: ["Applied canonical form scaffold with grouped fields and footer actions."]
+  };
+}
+
 async function recordFailureSafely(
   deps: OrchestratorDepsV2,
   request: GenerateRequestV2,
@@ -985,6 +1578,15 @@ export async function* runGenerationV2(
               });
             }
 
+            const formScaffoldFix = autoScaffoldFormSpecV2(candidateSpec, request.prompt);
+            if (formScaffoldFix.fixes.length > 0) {
+              candidateSpec = formScaffoldFix.spec;
+              candidateAcceptedWarnings.push({
+                code: "V2_FORM_SCAFFOLD_APPLIED",
+                message: `Applied form scaffold before semantic validation: ${formScaffoldFix.fixes.join(" ")}`
+              });
+            }
+
             const presentation = applyPresentationDefaultsV2(candidateSpec, request.prompt);
             candidateSpec = presentation.spec;
 
@@ -1055,7 +1657,12 @@ export async function* runGenerationV2(
             acceptedOnAttempt = true;
             acceptedCandidate = true;
             acceptedSnapshotForPersistence =
-              usedStructuralAutofix || packFix.fixes.length > 0 || presentation.changed ? null : snapshot;
+              usedStructuralAutofix ||
+              packFix.fixes.length > 0 ||
+              formScaffoldFix.fixes.length > 0 ||
+              presentation.changed
+                ? null
+                : snapshot;
           }
         }
       } catch (error) {

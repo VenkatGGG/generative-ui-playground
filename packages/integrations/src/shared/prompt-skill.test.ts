@@ -34,6 +34,18 @@ describe("prompt skill layer", () => {
     expect(section).toContain("ANTI-SKELETON");
   });
 
+  it("builds stronger form pack rules for v2", () => {
+    const section = buildPromptSkillSection({
+      prompt: "Build an account settings form with email input and save button",
+      isV2: true
+    });
+
+    expect(section).toContain("PROMPT PACK: form");
+    expect(section).toContain("Root must be Card with CardHeader, CardContent, and CardFooter.");
+    expect(section).toContain("Always include at least one primary Button in CardFooter.");
+    expect(section).toContain("validateForm");
+  });
+
   it("builds retry prompt with validation feedback and contract blocks", () => {
     const retryPrompt = buildRetryPromptWithValidationFeedback(
       "Create a pricing card",

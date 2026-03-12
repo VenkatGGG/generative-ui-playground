@@ -450,9 +450,12 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
       "Group form controls inside CardContent."
     ],
     requiredRulesV2: [
-      "Use state object for form values.",
-      "Use $bindState for Input/Textarea/Select/Checkbox controls.",
-      "Use on.submit/on.press action with validateForm or setState."
+      "Root must be Card with CardHeader, CardContent, and CardFooter.",
+      "Group all mutable form controls inside a Stack in CardContent.",
+      "Use state.form object for form values.",
+      "Use $bindState for every Input/Textarea/Select/Checkbox control.",
+      "Always include at least one primary Button in CardFooter.",
+      "Primary submit action must use validateForm with required non-checkbox fields."
     ],
     minElementsV1: 6,
     minElementsV2: 8,
@@ -576,9 +579,22 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
             type: "Card",
             children: [
               {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Stay in the loop"] },
+                  { id: "desc", type: "CardDescription", children: ["Get release notes and launch updates."] }
+                ]
+              },
+              {
                 id: "content",
                 type: "CardContent",
                 children: [
+                  {
+                    id: "fields",
+                    type: "Stack",
+                    props: { direction: "vertical", gap: "gap-3" },
+                    children: [
                   {
                     id: "email",
                     type: "Input",
@@ -590,6 +606,8 @@ const PROMPT_PACKS: ReadonlyArray<PromptPackDefinition> = [
                     type: "Checkbox",
                     props: { checked: { $bindState: "/form/consent" }, label: "I agree to product updates" },
                     children: []
+                  }
+                    ]
                   }
                 ]
               },

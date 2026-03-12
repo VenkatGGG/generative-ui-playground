@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UISpecV2 } from "@repo/contracts";
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
 import { runGenerationV2 } from "./orchestrator-v2";
@@ -884,5 +885,191 @@ describe("runGenerationV2", () => {
     expect(eventTypes).toContain("done");
     expect(warningCodes).not.toContain("V2_NO_VALID_SNAPSHOT");
     expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+  });
+
+  it("scaffolds incomplete form candidates into a valid form without fallback", async () => {
+    const deps = createDeps();
+    const createdAt = new Date().toISOString();
+    let persistedSpec: UISpecV2 | null = null;
+
+    deps.persistence = {
+      ...deps.persistence,
+      async persistGenerationV2(input) {
+        persistedSpec = input.specSnapshot;
+        return {
+          version: {
+            versionId: "v2-2",
+            threadId: input.threadId,
+            baseVersionId: input.baseVersionId,
+            specSnapshot: input.specSnapshot,
+            specHash: input.specHash,
+            mcpContextUsed: input.mcpContextUsed,
+            schemaVersion: "v2",
+            createdAt
+          },
+          message: {
+            id: "m2",
+            threadId: input.threadId,
+            generationId: input.generationId,
+            role: "assistant",
+            content: input.assistantResponseText,
+            reasoning: input.assistantReasoningText,
+            createdAt
+          },
+          log: {
+            id: "log2",
+            generationId: input.generationId,
+            threadId: input.threadId,
+            warningCount: input.warnings.length,
+            patchCount: input.patchCount,
+            durationMs: input.durationMs,
+            createdAt
+          }
+        };
+      }
+    };
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        yield JSON.stringify({
+          state: { form: { email: "", displayName: "", marketingOptIn: false } },
+          tree: {
+            id: "root",
+            type: "Card",
+            children: [
+              {
+                id: "content",
+                type: "CardContent",
+                children: [
+                  { id: "email", type: "Input", props: {}, children: [] },
+                  { id: "display-name", type: "Input", props: {}, children: [] },
+                  {
+                    id: "marketing-opt-in",
+                    type: "Checkbox",
+                    props: { label: "Marketing opt-in" },
+                    children: []
+                  }
+                ]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt:
+          "Build a compact account settings form with email input, display name input, marketing opt-in checkbox, and a Save Changes button in a clean modern card.",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(warningCodes).toContain("V2_FORM_SCAFFOLD_APPLIED");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+    expect(persistedSpec).not.toBeNull();
+    const persisted: UISpecV2 = (() => {
+      if (!persistedSpec) {
+        throw new Error("Expected persisted spec to be captured.");
+      }
+      return persistedSpec;
+    })();
+    const elements: UISpecV2["elements"] = persisted.elements;
+    expect(elements.header?.type).toBe("CardHeader");
+    expect(elements.content?.type).toBe("CardContent");
+    expect(elements.footer?.type).toBe("CardFooter");
+    expect(Object.values(elements).some((element) => element.type === "Button")).toBe(true);
+    expect(elements["display-name"]?.type).toBe("Input");
+    expect(elements["marketing-opt-in"]?.type).toBe("Checkbox");
+    expect(elements.name).toBeUndefined();
+    expect(elements.consent).toBeUndefined();
+  });
+
+  it("scaffolds unusable hidden form candidates instead of accepting them", async () => {
+    const deps = createDeps();
+    let persistedSpec: UISpecV2 | null = null;
+    const basePersistGenerationV2 = deps.persistence.persistGenerationV2.bind(deps.persistence);
+
+    deps.persistence = {
+      ...deps.persistence,
+      async persistGenerationV2(input) {
+        persistedSpec = input.specSnapshot;
+        return basePersistGenerationV2(input);
+      }
+    };
+
+    deps.model = {
+      ...deps.model,
+      async *streamDesignV2() {
+        yield JSON.stringify({
+          tree: {
+            id: "root",
+            type: "Card",
+            visible: false,
+            children: [
+              {
+                id: "header",
+                type: "CardHeader",
+                children: [
+                  { id: "title", type: "CardTitle", children: ["Account Settings"] },
+                  { id: "desc", type: "CardDescription", children: ["Manage your preferences."] }
+                ]
+              },
+              {
+                id: "content",
+                type: "CardContent",
+                visible: false,
+                children: [
+                  { id: "email-input", type: "Input", props: {}, children: [], visible: false },
+                  { id: "name-input", type: "Input", props: {}, children: [], visible: false },
+                  { id: "marketing-checkbox", type: "Checkbox", props: {}, children: [], visible: false }
+                ]
+              },
+              {
+                id: "footer",
+                type: "CardFooter",
+                visible: false,
+                children: [{ id: "save-button", type: "Button", children: ["Save Changes"], visible: false }]
+              }
+            ]
+          }
+        });
+      }
+    };
+
+    const warningCodes: string[] = [];
+    for await (const event of runGenerationV2(
+      {
+        threadId: "thread-v2",
+        prompt:
+          "Build a compact account settings form with email input, display name input, marketing opt-in checkbox, and a Save Changes button in a clean modern card.",
+        baseVersionId: null
+      },
+      deps
+    )) {
+      if (event.type === "warning") {
+        warningCodes.push(event.code);
+      }
+    }
+
+    expect(warningCodes).toContain("V2_FORM_SCAFFOLD_APPLIED");
+    expect(warningCodes).not.toContain("FALLBACK_APPLIED");
+    const persisted: UISpecV2 = (() => {
+      if (!persistedSpec) {
+        throw new Error("Expected persisted spec to be captured.");
+      }
+      return persistedSpec;
+    })();
+    expect(persisted.elements.root?.visible).toBeUndefined();
+    expect(persisted.elements.submit?.type).toBe("Button");
+    expect(persisted.state?.form).toBeDefined();
   });
 });
