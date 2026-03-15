@@ -9,7 +9,7 @@ describe("thread revert route runtime dependency failures", () => {
 
   it("returns 500 with deterministic error payload when runtime deps fail", async () => {
     vi.doMock("@/lib/server/runtime", () => ({
-      getRuntimeDeps: vi.fn().mockRejectedValue(new Error("runtime-init-failed"))
+      getOrCreateRuntimeDeps: vi.fn().mockRejectedValue(new Error("runtime-init-failed"))
     }));
 
     const { POST } = await import("./route");
@@ -34,7 +34,7 @@ describe("thread revert route runtime dependency failures", () => {
 
   it("returns 500 for non-not-found persistence errors", async () => {
     vi.doMock("@/lib/server/runtime", () => ({
-      getRuntimeDeps: vi.fn().mockResolvedValue({
+      getOrCreateRuntimeDeps: vi.fn().mockResolvedValue({
         persistence: {
           revertThread: vi.fn().mockRejectedValue(new Error("db-down"))
         }

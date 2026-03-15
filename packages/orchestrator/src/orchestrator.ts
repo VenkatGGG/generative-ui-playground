@@ -7,9 +7,8 @@ import {
   type UISpec
 } from "@repo/contracts";
 import { normalizeTreeToSpec, validateSpec, diffSpecs } from "@repo/spec-engine";
-import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
-import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
+import type { OrchestratorRuntimeDeps } from "./deps";
 import {
   buildConstraintSet,
   canonicalizeNodeTypes,
@@ -17,11 +16,7 @@ import {
   type ConstraintViolation
 } from "./constraints";
 
-export interface OrchestratorDeps {
-  model: GenerationModelAdapter;
-  mcp: MCPAdapter;
-  persistence: PersistenceAdapter;
-}
+export type OrchestratorDeps = OrchestratorRuntimeDeps;
 
 function specHash(spec: UISpec): string {
   return createHash("sha256").update(JSON.stringify(spec)).digest("hex");

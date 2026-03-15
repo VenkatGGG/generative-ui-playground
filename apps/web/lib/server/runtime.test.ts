@@ -14,8 +14,8 @@ describe("runtime adapter selection", () => {
   it("uses local stubs by default", async () => {
     delete process.env.ADAPTER_MODE;
 
-    const { getRuntimeDeps } = await import("./runtime");
-    const deps = await getRuntimeDeps();
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    const deps = await getOrCreateRuntimeDeps();
 
     const result = await deps.model.extractComponents({
       prompt: "Build a pricing card",
@@ -31,8 +31,8 @@ describe("runtime adapter selection", () => {
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
-    const { getRuntimeDeps } = await import("./runtime");
-    await expect(getRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await expect(getOrCreateRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
   });
 
   it("uses in-memory persistence for real mode when configured", async () => {
@@ -42,8 +42,8 @@ describe("runtime adapter selection", () => {
     delete process.env.MONGODB_URI;
     delete process.env.MONGODB_DB_NAME;
 
-    const { getRuntimeDeps } = await import("./runtime");
-    const deps = await getRuntimeDeps();
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    const deps = await getOrCreateRuntimeDeps();
 
     const thread = await deps.persistence.createThreadV2({ title: "memory mode" });
     expect(thread.threadId).toBeTruthy();
@@ -56,8 +56,8 @@ describe("runtime adapter selection", () => {
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
-    const { getRuntimeDeps } = await import("./runtime");
-    await expect(getRuntimeDeps()).rejects.toThrow("OPENAI_API_KEY");
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await expect(getOrCreateRuntimeDeps()).rejects.toThrow("OPENAI_API_KEY");
   });
 
   it("fails fast for unsupported llm providers", async () => {
@@ -66,8 +66,8 @@ describe("runtime adapter selection", () => {
     process.env.MONGODB_URI = "mongodb://localhost:27017";
     process.env.MONGODB_DB_NAME = "genui";
 
-    const { getRuntimeDeps } = await import("./runtime");
-    await expect(getRuntimeDeps()).rejects.toThrow("Unsupported LLM_PROVIDER");
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await expect(getOrCreateRuntimeDeps()).rejects.toThrow("Unsupported LLM_PROVIDER");
   });
 
   it("allows retry after an initialization failure", async () => {
@@ -76,11 +76,11 @@ describe("runtime adapter selection", () => {
     process.env.MONGODB_DB_NAME = "genui";
     delete process.env.GEMINI_API_KEY;
 
-    const { getRuntimeDeps } = await import("./runtime");
-    await expect(getRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await expect(getOrCreateRuntimeDeps()).rejects.toThrow("GEMINI_API_KEY");
 
     process.env.ADAPTER_MODE = "stub";
-    const deps = await getRuntimeDeps();
+    const deps = await getOrCreateRuntimeDeps();
     const extracted = await deps.model.extractComponents({
       prompt: "Render a card",
       previousSpec: null

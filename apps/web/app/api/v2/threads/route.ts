@@ -1,6 +1,6 @@
 import { CreateThreadRequestSchema } from "@repo/contracts";
 import type { OrchestratorDepsV2 } from "@repo/orchestrator";
-import { getRuntimeDeps } from "@/lib/server/runtime";
+import { getOrCreateRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
 
@@ -42,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let runtimeDeps: OrchestratorDepsV2;
   try {
-    runtimeDeps = (await getRuntimeDeps()) as OrchestratorDepsV2;
+    runtimeDeps = await getOrCreateRuntimeDeps();
   } catch (error) {
     return Response.json(
       {

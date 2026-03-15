@@ -71,8 +71,8 @@ describe("runtime gemini pass2 controls", () => {
     process.env.GEMINI_PASS2_THINKING_LEVEL = "MEDIUM";
 
     const mocks = buildMockRuntimeModules();
-    const { getRuntimeDeps } = await import("./runtime");
-    await getRuntimeDeps();
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await getOrCreateRuntimeDeps();
 
     expect(mocks.createGenerationModelAdapter).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -95,8 +95,8 @@ describe("runtime gemini pass2 controls", () => {
     delete process.env.GEMINI_PASS2_THINKING_LEVEL;
 
     const mocks = buildMockRuntimeModules();
-    const { getRuntimeDeps } = await import("./runtime");
-    await getRuntimeDeps();
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await getOrCreateRuntimeDeps();
 
     expect(mocks.createGenerationModelAdapter).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -118,8 +118,8 @@ describe("runtime gemini pass2 controls", () => {
     delete process.env.MONGODB_DB_NAME;
 
     const mocks = buildMockRuntimeModules();
-    const { getRuntimeDeps } = await import("./runtime");
-    await getRuntimeDeps();
+    const { getOrCreateRuntimeDeps } = await import("./runtime");
+    await getOrCreateRuntimeDeps();
 
     expect(mocks.createGenerationModelAdapter).toHaveBeenCalled();
     expect(mocks.mongoConnect).not.toHaveBeenCalled();

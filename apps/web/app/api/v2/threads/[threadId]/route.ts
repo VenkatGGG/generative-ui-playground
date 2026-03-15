@@ -1,5 +1,5 @@
 import type { OrchestratorDepsV2 } from "@repo/orchestrator";
-import { getRuntimeDeps } from "@/lib/server/runtime";
+import { getOrCreateRuntimeDeps } from "@/lib/server/runtime";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ export async function GET(
   const { threadId } = await context.params;
   let runtimeDeps: OrchestratorDepsV2;
   try {
-    runtimeDeps = (await getRuntimeDeps()) as OrchestratorDepsV2;
+    runtimeDeps = await getOrCreateRuntimeDeps();
   } catch (error) {
     return Response.json(
       {

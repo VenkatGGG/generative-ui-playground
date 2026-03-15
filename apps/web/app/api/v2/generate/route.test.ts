@@ -129,7 +129,7 @@ describe("v2 generate route", () => {
     };
 
     vi.doMock("@/lib/server/runtime", () => ({
-      getRuntimeDeps: async () => ({
+      getOrCreateRuntimeDeps: async () => ({
         model,
         mcp,
         persistence

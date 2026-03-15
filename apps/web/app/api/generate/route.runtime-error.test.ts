@@ -9,7 +9,7 @@ describe("generate route runtime dependency failures", () => {
 
   it("returns 500 with deterministic error payload when runtime deps fail", async () => {
     vi.doMock("@/lib/server/runtime", () => ({
-      getRuntimeDeps: vi.fn().mockRejectedValue(new Error("runtime-init-failed"))
+      getOrCreateRuntimeDeps: vi.fn().mockRejectedValue(new Error("runtime-init-failed"))
     }));
 
     const { POST } = await import("./route");
@@ -35,7 +35,7 @@ describe("generate route runtime dependency failures", () => {
 
   it("returns 500 for persistence read failures before stream start", async () => {
     vi.doMock("@/lib/server/runtime", () => ({
-      getRuntimeDeps: vi.fn().mockResolvedValue({
+      getOrCreateRuntimeDeps: vi.fn().mockResolvedValue({
         persistence: {
           getVersion: vi.fn().mockRejectedValue(new Error("db-down"))
         }

@@ -22,11 +22,10 @@ import {
   extractStyleTokens,
   type ExtractComponentsResult,
   getFallbackPromptComponents,
-  type GenerationModelAdapter,
   type MCPAdapter
 } from "@repo/integrations";
-import type { PersistenceAdapter } from "@repo/persistence";
 import { extractCompleteJsonObjects } from "./json-stream";
+import type { OrchestratorRuntimeDeps } from "./deps";
 import {
   buildConstraintSetV2,
   isUsableSpecForPromptPackV2,
@@ -34,11 +33,7 @@ import {
 } from "./constraints-v2";
 import { applyPresentationDefaultsV2 } from "./presentation-v2";
 
-export interface OrchestratorDepsV2 {
-  model: GenerationModelAdapter;
-  mcp: MCPAdapter;
-  persistence: PersistenceAdapter;
-}
+export type OrchestratorDepsV2 = OrchestratorRuntimeDeps;
 
 const MAX_PASS2_ATTEMPTS = 3;
 const RECOVERY_RESTART_MARKERS = ['{"state"', '{ "state"', '{"tree"', '{ "tree"', '{"id"', '{ "id"', "```json", "```"];
