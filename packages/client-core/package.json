@@ -21,7 +21,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/react": "^19.1.8"
+    "@types/react": "^19.1.8",
+    "@types/react-test-renderer": "^19.1.0",
+    "react-test-renderer": "^19.2.0"
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",

@@ -35,7 +35,7 @@ export interface ConstraintViolation {
   message: string;
 }
 
-export interface BuildConstraintInput {
+interface BuildConstraintInput {
   prompt: string;
   pass1: ExtractComponentsResult;
   mcpContext: MCPComponentContext;

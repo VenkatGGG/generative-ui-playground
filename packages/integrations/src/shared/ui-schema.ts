@@ -1,7 +1,7 @@
 import { ALLOWED_COMPONENT_TYPES } from "@repo/component-catalog";
 import { compileOpenAIStructuredOutputSchemaV2 } from "@repo/component-catalog/compiler";
 
-export const ALLOWED_UI_COMPONENT_TYPES = ALLOWED_COMPONENT_TYPES;
+const ALLOWED_UI_COMPONENT_TYPES = ALLOWED_COMPONENT_TYPES;
 
 export const UI_COMPONENT_NODE_JSON_SCHEMA: Record<string, unknown> = {
   $schema: "https://json-schema.org/draft/2020-12/schema",

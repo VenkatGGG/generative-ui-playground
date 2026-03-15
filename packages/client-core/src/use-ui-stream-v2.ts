@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { StreamEventV2, UISpecV2 } from "@repo/contracts";
 import { streamGenerateV2, StreamGenerateErrorV2 } from "./stream-v2";
 import {
+  type GenerationActionV2,
   generationReducerV2,
   initialGenerationStateV2,
   type GenerationStateV2
@@ -36,6 +37,11 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
     stateRef.current = state;
   }, [state]);
 
+  const applyAction = useCallback((action: GenerationActionV2) => {
+    stateRef.current = generationReducerV2(stateRef.current, action);
+    dispatch(action);
+  }, []);
+
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -44,12 +50,12 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
   const clear = useCallback(() => {
     abort();
     setRawEvents([]);
-    dispatch({ type: "reset", spec: null });
-  }, [abort]);
+    applyAction({ type: "reset", spec: null });
+  }, [abort, applyAction]);
 
   const hydrate = useCallback((spec: UISpecV2 | null) => {
-    dispatch({ type: "hydrate", spec });
-  }, []);
+    applyAction({ type: "hydrate", spec });
+  }, [applyAction]);
 
   const send = useCallback(
     async (body: Record<string, unknown>) => {
@@ -57,7 +63,7 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      dispatch({ type: "reset" });
+      applyAction({ type: "reset" });
       setRawEvents([]);
 
       try {
@@ -67,7 +73,7 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
           signal: controller.signal,
           onEvent: (event) => {
             setRawEvents((current: StreamEventV2[]) => [...current, event]);
-            dispatch(event);
+            applyAction(event);
           }
         });
 
@@ -78,7 +84,7 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
             ? error
             : new StreamGenerateErrorV2("STREAM_INTERRUPTED", "Generation stream interrupted.");
 
-        dispatch({
+        applyAction({
           type: "error",
           generationId: stateRef.current.generationId ?? "unknown",
           code: streamError.code,
@@ -90,7 +96,7 @@ export function useUIStreamV2(options: UseUIStreamV2Options): UseUIStreamV2Resul
         abortControllerRef.current = null;
       }
     },
-    [abort, options]
+    [abort, applyAction, options]
   );
 
   return {
