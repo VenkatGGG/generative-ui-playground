@@ -23,4 +23,22 @@ describe("threads routes", () => {
     const bundle = (await getResponse.json()) as { thread: { threadId: string } };
     expect(bundle.thread.threadId).toBe(created.thread.threadId);
   });
+
+  it("rejects malformed json create requests", async () => {
+    const response = await createThread(
+      new Request("http://localhost/api/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{"
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as {
+      error: string;
+      issues: Array<{ code: string; message: string }>;
+    };
+    expect(payload.error).toBe("INVALID_REQUEST");
+    expect(payload.issues[0]?.code).toBe("invalid_json");
+  });
 });

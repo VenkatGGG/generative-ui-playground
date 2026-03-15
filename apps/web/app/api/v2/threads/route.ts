@@ -5,7 +5,24 @@ import { getRuntimeDeps } from "@/lib/server/runtime";
 export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
-  const payload = await request.json().catch(() => ({}));
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json(
+      {
+        error: "INVALID_REQUEST",
+        issues: [
+          {
+            code: "invalid_json",
+            message: "Request body must be valid JSON.",
+            path: []
+          }
+        ]
+      },
+      { status: 400 }
+    );
+  }
   const parsed = CreateThreadRequestSchema.safeParse(payload);
 
   if (!parsed.success) {
