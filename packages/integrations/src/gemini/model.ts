@@ -1,25 +1,12 @@
-import type {
-  ExtractComponentsInput,
-  GenerationModelAdapter,
-  StreamDesignInput
-} from "../interfaces";
-import {
-  ALLOWED_COMPONENT_TYPES,
-  PASS2_EXAMPLE_TREE,
-  buildPass2CatalogSection
-} from "@repo/component-catalog";
-import {
-  compileCatalogPromptBlockV2,
-  compileGeminiStructuredOutputSchemaV2,
-  compilePass2ExampleSnapshotV2,
-  compileSemanticContractBlockV2
-} from "@repo/component-catalog/compiler";
+import type { GenerationModelAdapter } from "../interfaces";
+import { ALLOWED_COMPONENT_TYPES } from "@repo/component-catalog";
+import { compileGeminiStructuredOutputSchemaV2 } from "@repo/component-catalog/compiler";
 import { normalizeExtractComponentsResult } from "../shared/extract-components";
-import { buildComponentContextPromptSection } from "../shared/component-context-prompt";
 import {
-  buildPass2ContractBlock,
-  buildPromptSkillSection
-} from "../shared/prompt-skill";
+  buildPass1Prompt,
+  buildPass2Prompt,
+  buildPass2PromptV2
+} from "../shared/model-prompts";
 import { parseSseData } from "../shared/sse";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -114,72 +101,6 @@ function isRetryableTransportError(message: string): boolean {
     message.includes("network") ||
     message.includes("timed out")
   );
-}
-
-function toPass1Prompt(input: ExtractComponentsInput): string {
-  const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
-  return [
-    "You are a component extractor for a React UI generator.",
-    "Return strict JSON object only with keys: components (string[]), intentType (\"new\"|\"modify\"), confidence (0..1).",
-    "Do not include markdown.",
-    `Prompt: ${input.prompt}`,
-    `PreviousSpec: ${previousSpec}`
-  ].join("\n");
-}
-
-function toPass2Prompt(input: StreamDesignInput): string {
-  const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
-  const contextSection = buildComponentContextPromptSection(input.componentContext);
-  const example = JSON.stringify(PASS2_EXAMPLE_TREE, null, 2);
-  const catalogSection = buildPass2CatalogSection();
-  const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: false });
-  const contractSection = buildPass2ContractBlock(false);
-
-  return [
-    "You generate rich UI tree snapshots for a React renderer with strict contract compliance.",
-    contractSection,
-    catalogSection,
-    skillSection,
-    "Composition rules:",
-    "- Card must contain CardHeader with CardTitle and optional CardDescription.",
-    "- Card must contain CardContent for the body/actions.",
-    "- Place action components like Button/Badge in CardContent when relevant.",
-    "- Textual UI content must be represented as string children.",
-    "Generate visually complete output with meaningful copy and spacing cues, not skeletal placeholders.",
-    "Reference example of a valid complete snapshot:",
-    example,
-    contextSection,
-    `Prompt: ${input.prompt}`,
-    `PreviousSpec: ${previousSpec}`
-  ].join("\n");
-}
-
-function toPass2PromptV2(input: StreamDesignInput): string {
-  const previousSpec = input.previousSpec ? JSON.stringify(input.previousSpec) : "null";
-  const contextSection = buildComponentContextPromptSection(input.componentContext);
-  const example = JSON.stringify(compilePass2ExampleSnapshotV2(), null, 2);
-  const catalogSection = compileCatalogPromptBlockV2();
-  const skillSection = buildPromptSkillSection({ prompt: input.prompt, isV2: true });
-  const contractSection = [buildPass2ContractBlock(true), compileSemanticContractBlockV2()].join("\n");
-
-  return [
-    "You generate rich semantic UI tree snapshots for a React runtime with strict contract compliance.",
-    contractSection,
-    catalogSection,
-    skillSection,
-    "SEMANTIC CONTRACT:",
-    "- Use visible for conditional rendering (boolean, $state comparators, $and, $or, not).",
-    "- Use repeat with statePath for array iteration.",
-    "- Use on for events: press/change/submit with actions setState/pushState/removeState/validateForm.",
-    "- Use watch for state-path triggered actions.",
-    "- Use dynamic expressions in props/params: {$state}, {$item}, {$index}, {$bindState}, {$bindItem}.",
-    "- Return complete visually rich layouts; never return empty skeletons.",
-    "Reference example of a valid semantic snapshot:",
-    example,
-    contextSection,
-    `Prompt: ${input.prompt}`,
-    `PreviousSpec: ${previousSpec}`
-  ].join("\n");
 }
 
 function toRequest(
@@ -467,7 +388,7 @@ export function createGeminiGenerationModel(
   return {
     async extractComponents(input) {
       const endpoint = buildGenerateEndpoint(baseUrl, pass1Model, options.apiKey);
-      const raw = await callGemini(fetchImpl, endpoint, toRequest(toPass1Prompt(input)), pass1TimeoutMs);
+      const raw = await callGemini(fetchImpl, endpoint, toRequest(buildPass1Prompt(input)), pass1TimeoutMs);
       const parsed = safeJsonParse(raw);
       return normalizeExtractComponentsResult(parsed, input.prompt);
     },
@@ -476,7 +397,7 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA, pass2Config),
+        toRequest(buildPass2Prompt(input), GEMINI_UI_COMPONENT_NODE_SCHEMA, pass2Config),
         pass2RequestTimeoutMs
       );
     },
@@ -485,7 +406,7 @@ export function createGeminiGenerationModel(
       return streamGemini(
         fetchImpl,
         endpoint,
-        toRequest(toPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA, pass2Config),
+        toRequest(buildPass2PromptV2(input), GEMINI_UI_TREE_SNAPSHOT_V2_SCHEMA, pass2Config),
         pass2RequestTimeoutMs
       );
     }
