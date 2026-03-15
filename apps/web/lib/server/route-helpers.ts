@@ -1,4 +1,10 @@
 import { getOrCreateRuntimeDeps } from "@/lib/server/runtime";
+import {
+  attachActorCookie,
+  ensureThreadOwnership,
+  resolveRequestActor,
+  type ResolvedRequestActor
+} from "@/lib/server/request-auth";
 import { isPersistenceNotFoundError, type CreateThreadInput } from "@repo/persistence";
 import type { RuntimeDeps } from "@repo/orchestrator";
 
@@ -45,6 +51,10 @@ function internalServerErrorResponse(message: string): Response {
     },
     { status: 500 }
   );
+}
+
+function withActorCookie(response: Response, auth: ResolvedRequestActor): Response {
+  return attachActorCookie(response, auth);
 }
 
 async function resolveRuntimeDeps(): Promise<{ ok: true; deps: RuntimeDeps } | { ok: false; response: Response }> {
@@ -127,7 +137,7 @@ function createSseResponse<TEvent>(
 
 export async function handleCreateThreadRoute<
   TThread extends { threadId: string },
-  TBundle extends { versions: unknown[]; messages: unknown[] }
+  TBundle extends { thread: { ownerUserId: string }; versions: unknown[]; messages: unknown[] }
 >(
   request: Request,
   config: {
@@ -146,17 +156,28 @@ export async function handleCreateThreadRoute<
     return runtime.response;
   }
 
+  const auth = resolveRequestActor(request, { allowBootstrap: true });
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   try {
-    const thread = await config.createThread(runtime.deps, parsed.data);
+    const thread = await config.createThread(runtime.deps, {
+      ...parsed.data,
+      ownerUserId: auth.value.actor.userId
+    });
     const bundle = await config.getThreadBundle(runtime.deps, thread.threadId);
 
-    return Response.json(
-      {
-        thread,
-        versions: bundle?.versions ?? [],
-        messages: bundle?.messages ?? []
-      },
-      { status: 201 }
+    return withActorCookie(
+      Response.json(
+        {
+          thread,
+          versions: bundle?.versions ?? [],
+          messages: bundle?.messages ?? []
+        },
+        { status: 201 }
+      ),
+      auth.value
     );
   } catch (error) {
     return internalServerErrorResponse(
@@ -165,7 +186,8 @@ export async function handleCreateThreadRoute<
   }
 }
 
-export async function handleGetThreadBundleRoute<TBundle>(
+export async function handleGetThreadBundleRoute<TBundle extends { thread: { ownerUserId: string } }>(
+  request: Request,
   threadId: string,
   config: {
     getThreadBundle: (deps: RuntimeDeps, threadId: string) => Promise<TBundle | null>;
@@ -174,6 +196,11 @@ export async function handleGetThreadBundleRoute<TBundle>(
   const runtime = await resolveRuntimeDeps();
   if (!runtime.ok) {
     return runtime.response;
+  }
+
+  const auth = resolveRequestActor(request, { allowBootstrap: false });
+  if (!auth.ok) {
+    return auth.response;
   }
 
   try {
@@ -188,7 +215,12 @@ export async function handleGetThreadBundleRoute<TBundle>(
       );
     }
 
-    return Response.json(bundle);
+    const ownership = ensureThreadOwnership(bundle.thread.ownerUserId, auth.value.actor);
+    if (!ownership.ok) {
+      return ownership.response;
+    }
+
+    return withActorCookie(Response.json(bundle), auth.value);
   } catch (error) {
     return internalServerErrorResponse(
       error instanceof Error ? error.message : "Thread retrieval failed."
@@ -201,6 +233,7 @@ export async function handleRevertThreadRoute<TRequest, TVersion>(
   threadId: string,
   config: {
     schema: SafeParseSchema<TRequest>;
+    getThreadBundle: (deps: RuntimeDeps, threadId: string) => Promise<{ thread: { ownerUserId: string } } | null>;
     revertThread: (deps: RuntimeDeps, threadId: string, payload: TRequest) => Promise<TVersion>;
   }
 ): Promise<Response> {
@@ -209,14 +242,35 @@ export async function handleRevertThreadRoute<TRequest, TVersion>(
     return runtime.response;
   }
 
+  const auth = resolveRequestActor(request, { allowBootstrap: false });
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   const parsed = await parseRequestWithSchema(request, config.schema, { rejectMalformedJson: true });
   if (!parsed.ok) {
     return parsed.response;
   }
 
   try {
+    const bundle = await config.getThreadBundle(runtime.deps, threadId);
+    if (!bundle) {
+      return Response.json(
+        {
+          error: "THREAD_NOT_FOUND",
+          message: `Thread '${threadId}' was not found.`
+        },
+        { status: 404 }
+      );
+    }
+
+    const ownership = ensureThreadOwnership(bundle.thread.ownerUserId, auth.value.actor);
+    if (!ownership.ok) {
+      return ownership.response;
+    }
+
     const version = await config.revertThread(runtime.deps, threadId, parsed.data);
-    return Response.json({ version }, { status: 201 });
+    return withActorCookie(Response.json({ version }, { status: 201 }), auth.value);
   } catch (error) {
     if (isPersistenceNotFoundError(error)) {
       return Response.json(
@@ -238,6 +292,7 @@ export async function handleGenerateRoute<TRequest extends { threadId: string; b
   request: Request,
   config: {
     schema: SafeParseSchema<TRequest>;
+    getThreadBundle: (deps: RuntimeDeps, threadId: string) => Promise<{ thread: { ownerUserId: string } } | null>;
     getBaseVersion: (deps: RuntimeDeps, payload: TRequest) => Promise<unknown | null>;
     runGeneration: (payload: TRequest, deps: RuntimeDeps) => AsyncIterable<TEvent>;
     formatEvent: (event: TEvent) => string;
@@ -252,6 +307,33 @@ export async function handleGenerateRoute<TRequest extends { threadId: string; b
   const runtime = await resolveRuntimeDeps();
   if (!runtime.ok) {
     return runtime.response;
+  }
+
+  const auth = resolveRequestActor(request, { allowBootstrap: false });
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  try {
+    const bundle = await config.getThreadBundle(runtime.deps, parsed.data.threadId);
+    if (!bundle) {
+      return Response.json(
+        {
+          error: "THREAD_NOT_FOUND",
+          message: `Thread '${parsed.data.threadId}' was not found.`
+        },
+        { status: 404 }
+      );
+    }
+
+    const ownership = ensureThreadOwnership(bundle.thread.ownerUserId, auth.value.actor);
+    if (!ownership.ok) {
+      return ownership.response;
+    }
+  } catch (error) {
+    return internalServerErrorResponse(
+      error instanceof Error ? error.message : "Thread retrieval failed."
+    );
   }
 
   if (parsed.data.baseVersionId) {
@@ -273,9 +355,12 @@ export async function handleGenerateRoute<TRequest extends { threadId: string; b
     }
   }
 
-  return createSseResponse(
-    config.runGeneration(parsed.data, runtime.deps),
-    config.formatEvent,
-    config.buildErrorEvent
+  return withActorCookie(
+    createSseResponse(
+      config.runGeneration(parsed.data, runtime.deps),
+      config.formatEvent,
+      config.buildErrorEvent
+    ),
+    auth.value
   );
 }

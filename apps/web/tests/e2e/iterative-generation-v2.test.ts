@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 const originalEnv = { ...process.env };
 
@@ -63,7 +64,7 @@ describe("iterative generation e2e v2", () => {
     const { POST: createThreadRoute } = await import("../../app/api/v2/threads/route");
 
     const createResponse = await createThreadRoute(
-      new Request("http://localhost/api/v2/threads", {
+      buildActorRequest("http://localhost/api/v2/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "E2E Thread V2" })
@@ -86,7 +87,7 @@ describe("iterative generation e2e v2", () => {
 
     for (const prompt of prompts) {
       const generationResponse = await generateRoute(
-        new Request("http://localhost/api/v2/generate", {
+        buildActorRequest("http://localhost/api/v2/generate", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -113,7 +114,7 @@ describe("iterative generation e2e v2", () => {
     }
 
     const revertResponse = await revertRoute(
-      new Request("http://localhost/api/v2/threads/revert", {
+      buildActorRequest("http://localhost/api/v2/threads/revert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ versionId: generatedVersionIds[0] })
@@ -132,7 +133,7 @@ describe("iterative generation e2e v2", () => {
       };
     };
 
-    const bundleResponse = await getThreadRoute(new Request("http://localhost"), {
+    const bundleResponse = await getThreadRoute(buildActorRequest("http://localhost"), {
       params: Promise.resolve({ threadId: created.thread.threadId })
     });
     expect(bundleResponse.status).toBe(200);

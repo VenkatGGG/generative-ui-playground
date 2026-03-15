@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 describe("thread read route runtime dependency failures", () => {
   afterEach(() => {
@@ -13,7 +14,7 @@ describe("thread read route runtime dependency failures", () => {
     }));
 
     const { GET } = await import("./route");
-    const response = await GET(new Request("http://localhost/api/threads/thread-1"), {
+    const response = await GET(buildActorRequest("http://localhost/api/threads/thread-1"), {
       params: Promise.resolve({ threadId: "thread-1" })
     });
 
@@ -33,7 +34,7 @@ describe("thread read route runtime dependency failures", () => {
     }));
 
     const { GET } = await import("./route");
-    const response = await GET(new Request("http://localhost/api/threads/thread-1"), {
+    const response = await GET(buildActorRequest("http://localhost/api/threads/thread-1"), {
       params: Promise.resolve({ threadId: "thread-1" })
     });
 

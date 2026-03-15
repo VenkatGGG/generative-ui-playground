@@ -12,6 +12,7 @@ import type { VersionRecordV2 } from "@repo/contracts";
 
 export interface CreateThreadInput {
   title?: string;
+  ownerUserId?: string;
 }
 
 export interface PersistGenerationInput {

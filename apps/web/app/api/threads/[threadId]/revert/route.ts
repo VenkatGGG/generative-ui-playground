@@ -10,6 +10,7 @@ export async function POST(
   const { threadId } = await context.params;
   return handleRevertThreadRoute(request, threadId, {
     schema: RevertRequestSchema,
+    getThreadBundle: (deps, id) => deps.persistence.getThreadBundle(id),
     revertThread: (deps, id, payload) => deps.persistence.revertThread(id, payload.versionId)
   });
 }

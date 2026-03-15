@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 describe("thread revert route runtime dependency failures", () => {
   afterEach(() => {
@@ -14,7 +15,7 @@ describe("thread revert route runtime dependency failures", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/threads/thread-1/revert", {
+      buildActorRequest("http://localhost/api/threads/thread-1/revert", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -36,6 +37,9 @@ describe("thread revert route runtime dependency failures", () => {
     vi.doMock("@/lib/server/runtime", () => ({
       getOrCreateRuntimeDeps: vi.fn().mockResolvedValue({
         persistence: {
+          getThreadBundle: vi.fn().mockResolvedValue({
+            thread: { ownerUserId: "test-actor" }
+          }),
           revertThread: vi.fn().mockRejectedValue(new Error("db-down"))
         }
       })
@@ -43,7 +47,7 @@ describe("thread revert route runtime dependency failures", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/threads/thread-1/revert", {
+      buildActorRequest("http://localhost/api/threads/thread-1/revert", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

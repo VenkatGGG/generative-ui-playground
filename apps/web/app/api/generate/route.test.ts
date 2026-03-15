@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 const originalEnv = { ...process.env };
 
@@ -30,7 +31,7 @@ describe("generate route", () => {
     const { POST: generate } = await import("./route");
 
     const createResponse = await createThread(
-      new Request("http://localhost/api/threads", {
+      buildActorRequest("http://localhost/api/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Generate Thread" })
@@ -40,7 +41,7 @@ describe("generate route", () => {
     const created = (await createResponse.json()) as { thread: { threadId: string; activeVersionId: string } };
 
     const response = await generate(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -66,7 +67,7 @@ describe("generate route", () => {
     const { POST: generate } = await import("./route");
 
     const createResponse = await createThread(
-      new Request("http://localhost/api/threads", {
+      buildActorRequest("http://localhost/api/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Generate Thread" })
@@ -76,7 +77,7 @@ describe("generate route", () => {
     const created = (await createResponse.json()) as { thread: { threadId: string } };
 
     const response = await generate(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

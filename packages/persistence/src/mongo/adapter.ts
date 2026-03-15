@@ -85,6 +85,7 @@ function toThreadRecord(doc: MongoDocuments["thread"]): ThreadRecord {
     threadId: doc.threadId,
     title: doc.title,
     activeVersionId: doc.activeVersionId,
+    ownerUserId: doc.ownerUserId,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt
   };
@@ -207,6 +208,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       threadId,
       title: input.title ?? "Untitled Thread",
       activeVersionId: initialVersionId,
+      ownerUserId: input.ownerUserId ?? "anonymous",
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -237,6 +239,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
       threadId,
       title: input.title ?? "Untitled Thread",
       activeVersionId: initialVersionId,
+      ownerUserId: input.ownerUserId ?? "anonymous",
       createdAt: timestamp,
       updatedAt: timestamp
     };

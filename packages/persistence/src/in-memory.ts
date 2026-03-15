@@ -95,6 +95,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       threadId,
       title: input.title ?? "Untitled Thread",
       activeVersionId: versionId,
+      ownerUserId: input.ownerUserId ?? "anonymous",
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -158,6 +159,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
       threadId,
       title: input.title ?? "Untitled Thread",
       activeVersionId: versionId,
+      ownerUserId: input.ownerUserId ?? "anonymous",
       createdAt: timestamp,
       updatedAt: timestamp
     };

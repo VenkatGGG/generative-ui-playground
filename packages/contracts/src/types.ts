@@ -58,6 +58,7 @@ export interface ThreadRecord {
   threadId: string;
   title: string;
   activeVersionId: string;
+  ownerUserId: string;
   createdAt: string;
   updatedAt: string;
 }

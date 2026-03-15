@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 describe("generate route runtime dependency failures", () => {
   afterEach(() => {
@@ -14,7 +15,7 @@ describe("generate route runtime dependency failures", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -37,6 +38,9 @@ describe("generate route runtime dependency failures", () => {
     vi.doMock("@/lib/server/runtime", () => ({
       getOrCreateRuntimeDeps: vi.fn().mockResolvedValue({
         persistence: {
+          getThreadBundle: vi.fn().mockResolvedValue({
+            thread: { ownerUserId: "test-actor" }
+          }),
           getVersion: vi.fn().mockRejectedValue(new Error("db-down"))
         }
       })
@@ -44,7 +48,7 @@ describe("generate route runtime dependency failures", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

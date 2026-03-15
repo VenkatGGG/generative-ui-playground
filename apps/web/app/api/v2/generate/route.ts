@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request): Promise<Response> {
   return handleGenerateRoute(request, {
     schema: GenerateRequestV2Schema,
+    getThreadBundle: (deps, threadId) => deps.persistence.getThreadBundleV2(threadId),
     getBaseVersion: (deps, payload) =>
       deps.persistence.getVersionV2(payload.threadId, payload.baseVersionId),
     runGeneration: (payload, deps) => runGenerationV2(payload, deps),

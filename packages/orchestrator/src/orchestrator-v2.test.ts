@@ -18,6 +18,7 @@ function createDeps(): {
         threadId: "thread-v1",
         title: "Thread v1",
         activeVersionId: "v1",
+        ownerUserId: "user-1",
         createdAt: now,
         updatedAt: now
       };
@@ -27,6 +28,7 @@ function createDeps(): {
         threadId: "thread-v2",
         title: "Thread v2",
         activeVersionId: "v2-1",
+        ownerUserId: "user-1",
         createdAt: now,
         updatedAt: now
       };
@@ -37,6 +39,7 @@ function createDeps(): {
           threadId: "thread-v1",
           title: "Thread v1",
           activeVersionId: "v1",
+          ownerUserId: "user-1",
           createdAt: now,
           updatedAt: now
         },
@@ -50,6 +53,7 @@ function createDeps(): {
           threadId: "thread-v2",
           title: "Thread v2",
           activeVersionId: "v2-1",
+          ownerUserId: "user-1",
           createdAt: now,
           updatedAt: now
         },

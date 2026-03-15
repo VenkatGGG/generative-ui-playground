@@ -138,6 +138,7 @@ export interface ThreadBundleV2 {
     threadId: string;
     title: string;
     activeVersionId: string;
+    ownerUserId: string;
     createdAt: string;
     updatedAt: string;
   };

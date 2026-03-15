@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildActorRequest } from "@/test-utils/request-auth";
 
 const originalEnv = { ...process.env };
 
@@ -62,7 +63,7 @@ describe("iterative generation e2e", () => {
     const { POST: createThreadRoute } = await import("../../app/api/threads/route");
 
     const createResponse = await createThreadRoute(
-      new Request("http://localhost/api/threads", {
+      buildActorRequest("http://localhost/api/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "E2E Thread" })
@@ -76,7 +77,7 @@ describe("iterative generation e2e", () => {
     };
 
     const firstGeneration = await generateRoute(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -95,7 +96,7 @@ describe("iterative generation e2e", () => {
     const version1 = getDoneVersionId(firstEvents);
 
     const secondGeneration = await generateRoute(
-      new Request("http://localhost/api/generate", {
+      buildActorRequest("http://localhost/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -116,7 +117,7 @@ describe("iterative generation e2e", () => {
     expect(version2).not.toBe(version1);
 
     const revertResponse = await revertRoute(
-      new Request("http://localhost/api/threads/revert", {
+      buildActorRequest("http://localhost/api/threads/revert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ versionId: version1 })
@@ -134,7 +135,7 @@ describe("iterative generation e2e", () => {
       };
     };
 
-    const bundleResponse = await getThreadRoute(new Request("http://localhost"), {
+    const bundleResponse = await getThreadRoute(buildActorRequest("http://localhost"), {
       params: Promise.resolve({ threadId: created.thread.threadId })
     });
 

@@ -67,6 +67,7 @@ describe("v1 type contracts", () => {
         threadId: "t1",
         title: "Studio Session",
         activeVersionId: "v1",
+        ownerUserId: "user-1",
         createdAt: "2026-03-15T00:00:00.000Z",
         updatedAt: "2026-03-15T00:00:00.000Z"
       },

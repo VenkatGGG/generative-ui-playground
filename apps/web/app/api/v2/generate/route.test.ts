@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationModelAdapter, MCPAdapter } from "@repo/integrations";
 import type { PersistenceAdapter } from "@repo/persistence";
+import { buildActorRequest, OTHER_TEST_ACTOR_ID } from "@/test-utils/request-auth";
 
 const originalEnv = { ...process.env };
 
@@ -38,7 +39,7 @@ describe("v2 generate route", () => {
     const { POST: generate } = await import("./route");
 
     const createResponse = await createThread(
-      new Request("http://localhost/api/v2/threads", {
+      buildActorRequest("http://localhost/api/v2/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Generate Thread V2" })
@@ -48,7 +49,7 @@ describe("v2 generate route", () => {
     const created = (await createResponse.json()) as { thread: { threadId: string; activeVersionId: string } };
 
     const response = await generate(
-      new Request("http://localhost/api/v2/generate", {
+      buildActorRequest("http://localhost/api/v2/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -87,7 +88,10 @@ describe("v2 generate route", () => {
 
     const { InMemoryPersistenceAdapter } = await import("@repo/persistence");
     const persistence: PersistenceAdapter = new InMemoryPersistenceAdapter();
-    const thread = await persistence.createThreadV2({ title: "Route fallback thread" });
+    const thread = await persistence.createThreadV2({
+      title: "Route fallback thread",
+      ownerUserId: "test-actor"
+    });
 
     const model: GenerationModelAdapter = {
       async extractComponents() {
@@ -138,7 +142,7 @@ describe("v2 generate route", () => {
 
     const { POST: generate } = await import("./route");
     const response = await generate(
-      new Request("http://localhost/api/v2/generate", {
+      buildActorRequest("http://localhost/api/v2/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -164,5 +168,43 @@ describe("v2 generate route", () => {
     expect(warningCodes).toContain("V2_CARD_STRUCTURE_MISSING");
     expect(warningCodes).toContain("V2_NO_STRUCTURAL_PROGRESS");
     expect(warningCodes).toContain("FALLBACK_APPLIED");
+  });
+
+  it("rejects generation requests from a different actor", async () => {
+    const { POST: createThread } = await import("../threads/route");
+    const { POST: generate } = await import("./route");
+
+    const createResponse = await createThread(
+      buildActorRequest("http://localhost/api/v2/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Owned Thread V2" })
+      })
+    );
+
+    const created = (await createResponse.json()) as { thread: { threadId: string; activeVersionId: string } };
+
+    const response = await generate(
+      buildActorRequest(
+        "http://localhost/api/v2/generate",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream"
+          },
+          body: JSON.stringify({
+            threadId: created.thread.threadId,
+            prompt: "Create semantic pricing card",
+            baseVersionId: created.thread.activeVersionId
+          })
+        },
+        OTHER_TEST_ACTOR_ID
+      )
+    );
+
+    expect(response.status).toBe(403);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toBe("THREAD_ACCESS_DENIED");
   });
 });

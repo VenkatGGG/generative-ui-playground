@@ -84,6 +84,7 @@ export const ThreadRecordSchema = z.object({
   threadId: z.string(),
   title: z.string(),
   activeVersionId: z.string(),
+  ownerUserId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
