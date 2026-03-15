@@ -1,5 +1,4 @@
-import type { OrchestratorDeps } from "@repo/orchestrator";
-import { getOrCreateRuntimeDeps } from "@/lib/server/runtime";
+import { handleGetThreadBundleRoute } from "@/lib/server/route-helpers";
 
 export const runtime = "nodejs";
 
@@ -8,41 +7,7 @@ export async function GET(
   context: { params: Promise<{ threadId: string }> }
 ): Promise<Response> {
   const { threadId } = await context.params;
-  let runtimeDeps: OrchestratorDeps;
-  try {
-    runtimeDeps = await getOrCreateRuntimeDeps();
-  } catch (error) {
-    return Response.json(
-      {
-        error: "RUNTIME_DEPENDENCY_ERROR",
-        message:
-          error instanceof Error ? error.message : "Failed to initialize runtime dependencies."
-      },
-      { status: 500 }
-    );
-  }
-
-  try {
-    const bundle = await runtimeDeps.persistence.getThreadBundle(threadId);
-
-    if (!bundle) {
-      return Response.json(
-        {
-          error: "THREAD_NOT_FOUND",
-          message: `Thread '${threadId}' was not found.`
-        },
-        { status: 404 }
-      );
-    }
-
-    return Response.json(bundle);
-  } catch (error) {
-    return Response.json(
-      {
-        error: "INTERNAL_SERVER_ERROR",
-        message: error instanceof Error ? error.message : "Thread retrieval failed."
-      },
-      { status: 500 }
-    );
-  }
+  return handleGetThreadBundleRoute(threadId, {
+    getThreadBundle: (deps, id) => deps.persistence.getThreadBundle(id)
+  });
 }
