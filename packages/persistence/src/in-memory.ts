@@ -15,6 +15,10 @@ import type {
   PersistenceAdapter,
   RecordGenerationFailureInput
 } from "./interfaces";
+import {
+  PersistenceThreadNotFoundError,
+  PersistenceVersionNotFoundError
+} from "./errors";
 
 interface ThreadState {
   thread: ThreadRecord;
@@ -44,6 +48,39 @@ function createInitialSpecV2(): VersionRecordV2["specSnapshot"] {
     root: "",
     elements: {}
   };
+}
+
+function requireThreadState(
+  state: ThreadState | undefined,
+  threadId: string
+): ThreadState {
+  if (!state) {
+    throw new PersistenceThreadNotFoundError(threadId);
+  }
+
+  return state;
+}
+
+function requireVersionRecord(
+  version: VersionRecord | undefined,
+  versionId: string
+): VersionRecord {
+  if (!version) {
+    throw new PersistenceVersionNotFoundError(versionId);
+  }
+
+  return version;
+}
+
+function requireVersionRecordV2(
+  version: VersionRecordV2 | undefined,
+  versionId: string
+): VersionRecordV2 {
+  if (!version) {
+    throw new PersistenceVersionNotFoundError(versionId);
+  }
+
+  return version;
 }
 
 export class InMemoryPersistenceAdapter implements PersistenceAdapter {
@@ -179,10 +216,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
   public async persistGeneration(
     input: PersistGenerationInput
   ): Promise<{ version: VersionRecord; message: MessageRecord; log: GenerationLogRecord }> {
-    const state = this.store.get(input.threadId);
-    if (!state) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    const state = requireThreadState(this.store.get(input.threadId), input.threadId);
 
     const timestamp = now();
 
@@ -250,10 +284,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
   public async persistGenerationV2(
     input: PersistGenerationV2Input
   ): Promise<{ version: VersionRecordV2; message: MessageRecord; log: GenerationLogRecord }> {
-    const state = this.store.get(input.threadId);
-    if (!state) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    const state = requireThreadState(this.store.get(input.threadId), input.threadId);
 
     const timestamp = now();
 
@@ -323,10 +354,7 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
   public async recordGenerationFailure(
     input: RecordGenerationFailureInput
   ): Promise<GenerationLogRecord> {
-    const state = this.store.get(input.threadId);
-    if (!state) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    const state = requireThreadState(this.store.get(input.threadId), input.threadId);
 
     const log: GenerationLogRecord = {
       id: randomUUID(),
@@ -344,15 +372,11 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
   }
 
   public async revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord> {
-    const state = this.store.get(threadId);
-    if (!state) {
-      throw new Error(`Thread '${threadId}' not found.`);
-    }
-
-    const target = state.versions.find((version) => version.versionId === targetVersionId);
-    if (!target) {
-      throw new Error(`Version '${targetVersionId}' not found.`);
-    }
+    const state = requireThreadState(this.store.get(threadId), threadId);
+    const target = requireVersionRecord(
+      state.versions.find((version) => version.versionId === targetVersionId),
+      targetVersionId
+    );
 
     const timestamp = now();
     const revertVersion: VersionRecord = {
@@ -373,15 +397,11 @@ export class InMemoryPersistenceAdapter implements PersistenceAdapter {
   }
 
   public async revertThreadV2(threadId: string, targetVersionId: string): Promise<VersionRecordV2> {
-    const state = this.store.get(threadId);
-    if (!state) {
-      throw new Error(`Thread '${threadId}' not found.`);
-    }
-
-    const target = state.versionsV2.find((version) => version.versionId === targetVersionId);
-    if (!target) {
-      throw new Error(`Version '${targetVersionId}' not found.`);
-    }
+    const state = requireThreadState(this.store.get(threadId), threadId);
+    const target = requireVersionRecordV2(
+      state.versionsV2.find((version) => version.versionId === targetVersionId),
+      targetVersionId
+    );
 
     const timestamp = now();
     const revertVersion: VersionRecordV2 = {

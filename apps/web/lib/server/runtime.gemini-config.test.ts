@@ -9,6 +9,9 @@ function buildMockRuntimeModules() {
     extractComponents: vi.fn(async () => ({ components: [], intentType: "new", confidence: 1 })),
     streamDesign: vi.fn(async function* streamDesign() {
       yield '{"id":"root","type":"Card"}';
+    }),
+    streamDesignV2: vi.fn(async function* streamDesignV2() {
+      yield '{"tree":{"id":"root","type":"Card","children":[]}}';
     })
   }));
 

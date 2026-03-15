@@ -8,14 +8,14 @@ import {
   type ModelProviderConfig
 } from "@repo/integrations";
 import { InMemoryPersistenceAdapter } from "@repo/persistence";
-import type { OrchestratorRuntimeDeps } from "@repo/orchestrator";
+import type { RuntimeDeps } from "@repo/orchestrator";
 
 type RuntimeMode = "stub" | "real";
 type PersistenceMode = "mongo" | "memory";
 
 declare global {
   // Share runtime deps across Next route module contexts in dev.
-  var __generativeUiRuntimeDepsPromise__: Promise<OrchestratorRuntimeDeps> | null | undefined;
+  var __generativeUiRuntimeDepsPromise__: Promise<RuntimeDeps> | null | undefined;
 }
 
 function resolveMode(): RuntimeMode {
@@ -78,7 +78,7 @@ function resolveGeminiPass2ThinkingLevel(): "LOW" | "MEDIUM" | "HIGH" | undefine
   return undefined;
 }
 
-async function createRealRuntimeDeps(): Promise<OrchestratorRuntimeDeps> {
+async function createRealRuntimeDeps(): Promise<RuntimeDeps> {
   const llmProvider = resolveLlmProvider();
 
   const modelConfig: ModelProviderConfig =
@@ -135,7 +135,7 @@ async function createRealRuntimeDeps(): Promise<OrchestratorRuntimeDeps> {
   };
 }
 
-async function createRuntimeDeps(): Promise<OrchestratorRuntimeDeps> {
+async function createRuntimeDeps(): Promise<RuntimeDeps> {
   if (resolveMode() === "real") {
     return createRealRuntimeDeps();
   }
@@ -147,7 +147,7 @@ async function createRuntimeDeps(): Promise<OrchestratorRuntimeDeps> {
   };
 }
 
-export function getOrCreateRuntimeDeps(): Promise<OrchestratorRuntimeDeps> {
+export function getOrCreateRuntimeDeps(): Promise<RuntimeDeps> {
   if (!globalThis.__generativeUiRuntimeDepsPromise__) {
     globalThis.__generativeUiRuntimeDepsPromise__ = createRuntimeDeps().catch((error: unknown) => {
       globalThis.__generativeUiRuntimeDepsPromise__ = null;

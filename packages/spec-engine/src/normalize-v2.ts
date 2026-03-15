@@ -48,14 +48,12 @@ function normalizeNode(
   return node.id;
 }
 
-export function normalizeTreeToSpecV2(
-  input: UITreeSnapshotV2 | UIComponentNodeV2,
+export function normalizeSnapshotToSpecV2(
+  snapshot: UITreeSnapshotV2,
   options: NormalizeOptionsV2 = {}
 ): UISpecV2 {
   const textElementType = options.textElementType ?? DEFAULT_TEXT_ELEMENT_TYPE;
   const elements: Record<string, UISpecElementV2> = {};
-
-  const snapshot = "tree" in input ? input : { tree: input };
   const root = normalizeNode(snapshot.tree, elements, textElementType);
 
   return {
@@ -63,4 +61,11 @@ export function normalizeTreeToSpecV2(
     elements,
     state: snapshot.state
   };
+}
+
+export function normalizeNodeToSpecV2(
+  node: UIComponentNodeV2,
+  options: NormalizeOptionsV2 = {}
+): UISpecV2 {
+  return normalizeSnapshotToSpecV2({ tree: node }, options);
 }

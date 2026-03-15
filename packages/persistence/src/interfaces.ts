@@ -53,13 +53,21 @@ export interface RecordGenerationFailureInput {
   errorCode: string;
 }
 
-export interface PersistenceAdapter {
+export interface PersistenceFailureRecorder {
+  recordGenerationFailure(input: RecordGenerationFailureInput): Promise<GenerationLogRecord>;
+}
+
+export interface PersistenceAdapterV1 extends PersistenceFailureRecorder {
   createThread(input: CreateThreadInput): Promise<ThreadRecord>;
   getThreadBundle(threadId: string): Promise<ThreadBundle | null>;
   getVersion(threadId: string, versionId: string | null): Promise<VersionRecord | null>;
-  persistGeneration(input: PersistGenerationInput): Promise<{ version: VersionRecord; message: MessageRecord; log: GenerationLogRecord }>;
-  recordGenerationFailure(input: RecordGenerationFailureInput): Promise<GenerationLogRecord>;
+  persistGeneration(
+    input: PersistGenerationInput
+  ): Promise<{ version: VersionRecord; message: MessageRecord; log: GenerationLogRecord }>;
   revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord>;
+}
+
+export interface PersistenceAdapterV2 extends PersistenceFailureRecorder {
   createThreadV2(input: CreateThreadInput): Promise<ThreadRecord>;
   getThreadBundleV2(threadId: string): Promise<ThreadBundleV2 | null>;
   getVersionV2(threadId: string, versionId: string | null): Promise<VersionRecordV2 | null>;
@@ -68,3 +76,5 @@ export interface PersistenceAdapter {
   ): Promise<{ version: VersionRecordV2; message: MessageRecord; log: GenerationLogRecord }>;
   revertThreadV2(threadId: string, targetVersionId: string): Promise<VersionRecordV2>;
 }
+
+export type PersistenceAdapter = PersistenceAdapterV1 & PersistenceAdapterV2;

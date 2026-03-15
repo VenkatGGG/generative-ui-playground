@@ -11,7 +11,7 @@ import { getAllowedComponentTypeSetV2 } from "@repo/component-catalog";
 import {
   autoFixStructuralSpecV2,
   diffSpecs,
-  normalizeTreeToSpecV2,
+  normalizeSnapshotToSpecV2,
   validateSpecV2,
   validateStructuralSpecV2
 } from "@repo/spec-engine";
@@ -25,7 +25,7 @@ import {
   type MCPAdapter
 } from "@repo/integrations";
 import { extractCompleteJsonObjects } from "./json-stream";
-import type { OrchestratorRuntimeDeps } from "./deps";
+import type { OrchestratorRuntimeDepsV2 } from "./deps";
 import {
   buildConstraintSetV2,
   isUsableSpecForPromptPackV2,
@@ -33,7 +33,7 @@ import {
 } from "./constraints-v2";
 import { applyPresentationDefaultsV2 } from "./presentation-v2";
 
-export type OrchestratorDepsV2 = OrchestratorRuntimeDeps;
+export type OrchestratorDepsV2 = OrchestratorRuntimeDepsV2;
 
 const MAX_PASS2_ATTEMPTS = 3;
 const RECOVERY_RESTART_MARKERS = ['{"state"', '{ "state"', '{"tree"', '{ "tree"', '{"id"', '{ "id"', "```json", "```"];
@@ -1323,7 +1323,7 @@ function autoScaffoldFormSpecV2(spec: UISpecV2, prompt: string): { spec: UISpecV
     return { spec, fixes: [] };
   }
 
-  const scaffoldedSpec = normalizeTreeToSpecV2(buildFormSnapshotV2(prompt, spec));
+  const scaffoldedSpec = normalizeSnapshotToSpecV2(buildFormSnapshotV2(prompt, spec));
   return {
     spec: scaffoldedSpec,
     fixes: ["Applied canonical form scaffold with grouped fields and footer actions."]
@@ -1481,17 +1481,11 @@ export async function* runGenerationV2(
           ? request.prompt
           : buildRetryPromptWithValidationFeedback(request.prompt, lastValidationIssues, attempt);
 
-      const streamSource =
-        deps.model.streamDesignV2?.({
-          prompt: streamPrompt,
-          previousSpec: baseVersion?.specSnapshot ?? null,
-          componentContext: runtimeContext
-        }) ??
-        deps.model.streamDesign({
-          prompt: streamPrompt,
-          previousSpec: baseVersion?.specSnapshot ?? null,
-          componentContext: runtimeContext
-        });
+      const streamSource = deps.model.streamDesignV2({
+        prompt: streamPrompt,
+        previousSpec: baseVersion?.specSnapshot ?? null,
+        componentContext: runtimeContext
+      });
 
       let acceptedOnAttempt = false;
       let observedObjectOnAttempt = false;
@@ -1534,7 +1528,7 @@ export async function* runGenerationV2(
             }
 
             sawAnyCandidate = true;
-            const initialCandidateSpec = normalizeTreeToSpecV2(snapshot);
+            const initialCandidateSpec = normalizeSnapshotToSpecV2(snapshot);
             let candidateSpec = initialCandidateSpec;
             const candidateAcceptedWarnings: Array<{ code: string; message: string }> = [];
             let usedStructuralAutofix = false;
@@ -1710,7 +1704,7 @@ export async function* runGenerationV2(
 
     if (!acceptedCandidate) {
       const fallbackSnapshot = buildFallbackSnapshotV2(request.prompt);
-      const fallbackSpec = applyPresentationDefaultsV2(normalizeTreeToSpecV2(fallbackSnapshot), request.prompt).spec;
+      const fallbackSpec = applyPresentationDefaultsV2(normalizeSnapshotToSpecV2(fallbackSnapshot), request.prompt).spec;
       const validation = validateSpecV2(fallbackSpec, { allowedComponentTypes });
 
       if (!validation.valid) {

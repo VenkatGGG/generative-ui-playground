@@ -39,7 +39,7 @@ export interface MCPComponentContext {
 export interface GenerationModelAdapter {
   extractComponents(input: ExtractComponentsInput): Promise<ExtractComponentsResult>;
   streamDesign(input: StreamDesignInput): AsyncIterable<string>;
-  streamDesignV2?(input: StreamDesignInputV2): AsyncIterable<string>;
+  streamDesignV2(input: StreamDesignInputV2): AsyncIterable<string>;
 }
 
 export interface MCPAdapter {

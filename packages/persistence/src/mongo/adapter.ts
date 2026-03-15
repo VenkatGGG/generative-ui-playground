@@ -16,6 +16,10 @@ import type {
   PersistenceAdapter,
   RecordGenerationFailureInput
 } from "../interfaces";
+import {
+  PersistenceThreadNotFoundError,
+  PersistenceVersionNotFoundError
+} from "../errors";
 
 interface CollectionNames {
   threads: string;
@@ -132,6 +136,22 @@ function v1VersionQuery(): Record<string, unknown> {
 
 function v2VersionQuery(): Record<string, unknown> {
   return { schemaVersion: "v2" };
+}
+
+function requireThreadDocument<T>(thread: T | null, threadId: string): T {
+  if (!thread) {
+    throw new PersistenceThreadNotFoundError(threadId);
+  }
+
+  return thread;
+}
+
+function requireVersionDocument<T>(version: T | null, versionId: string): T {
+  if (!version) {
+    throw new PersistenceVersionNotFoundError(versionId);
+  }
+
+  return version;
 }
 
 export class MongoPersistenceAdapter implements PersistenceAdapter {
@@ -313,10 +333,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
   public async persistGeneration(
     input: PersistGenerationInput
   ): Promise<{ version: VersionRecord; message: MessageRecord; log: GenerationLogRecord }> {
-    const thread = await this.threads.findOne({ threadId: input.threadId });
-    if (!thread) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    requireThreadDocument(await this.threads.findOne({ threadId: input.threadId }), input.threadId);
 
     const timestamp = this.now();
 
@@ -393,10 +410,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
   public async persistGenerationV2(
     input: PersistGenerationV2Input
   ): Promise<{ version: VersionRecordV2; message: MessageRecord; log: GenerationLogRecord }> {
-    const thread = await this.threads.findOne({ threadId: input.threadId });
-    if (!thread) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    requireThreadDocument(await this.threads.findOne({ threadId: input.threadId }), input.threadId);
 
     const timestamp = this.now();
 
@@ -474,10 +488,7 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
   public async recordGenerationFailure(
     input: RecordGenerationFailureInput
   ): Promise<GenerationLogRecord> {
-    const thread = await this.threads.findOne({ threadId: input.threadId });
-    if (!thread) {
-      throw new Error(`Thread '${input.threadId}' not found.`);
-    }
+    requireThreadDocument(await this.threads.findOne({ threadId: input.threadId }), input.threadId);
 
     const log: GenerationLogRecord = {
       id: this.idFactory(),
@@ -495,20 +506,16 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
   }
 
   public async revertThread(threadId: string, targetVersionId: string): Promise<VersionRecord> {
-    const thread = await this.threads.findOne({ threadId });
-    if (!thread) {
-      throw new Error(`Thread '${threadId}' not found.`);
-    }
+    requireThreadDocument(await this.threads.findOne({ threadId }), threadId);
 
-    const target = await this.versions.findOne({
-      threadId,
-      versionId: targetVersionId,
-      ...v1VersionQuery()
-    });
-
-    if (!target) {
-      throw new Error(`Version '${targetVersionId}' not found.`);
-    }
+    const target = requireVersionDocument(
+      await this.versions.findOne({
+        threadId,
+        versionId: targetVersionId,
+        ...v1VersionQuery()
+      }),
+      targetVersionId
+    );
 
     const timestamp = this.now();
     const revertVersion: MongoVersionDocument = {
@@ -538,20 +545,16 @@ export class MongoPersistenceAdapter implements PersistenceAdapter {
   }
 
   public async revertThreadV2(threadId: string, targetVersionId: string): Promise<VersionRecordV2> {
-    const thread = await this.threads.findOne({ threadId });
-    if (!thread) {
-      throw new Error(`Thread '${threadId}' not found.`);
-    }
+    requireThreadDocument(await this.threads.findOne({ threadId }), threadId);
 
-    const target = await this.versions.findOne({
-      threadId,
-      versionId: targetVersionId,
-      ...v2VersionQuery()
-    });
-
-    if (!target) {
-      throw new Error(`Version '${targetVersionId}' not found.`);
-    }
+    const target = requireVersionDocument(
+      await this.versions.findOne({
+        threadId,
+        versionId: targetVersionId,
+        ...v2VersionQuery()
+      }),
+      targetVersionId
+    );
 
     const timestamp = this.now();
     const revertVersion: MongoVersionDocument = {

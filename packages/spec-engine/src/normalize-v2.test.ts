@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTreeToSpecV2 } from "./normalize-v2";
+import { normalizeSnapshotToSpecV2 } from "./normalize-v2";
 
-describe("normalizeTreeToSpecV2", () => {
+describe("normalizeSnapshotToSpecV2", () => {
   it("normalizes semantic node fields into v2 spec elements", () => {
-    const spec = normalizeTreeToSpecV2({
+    const spec = normalizeSnapshotToSpecV2({
       state: {
         items: [{ id: "1", label: "One" }]
       },

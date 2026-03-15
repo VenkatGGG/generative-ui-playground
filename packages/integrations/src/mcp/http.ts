@@ -14,6 +14,8 @@ interface MCPHttpResponse {
   componentRules?: unknown;
 }
 
+const FALLBACK_NOTE = "MCP endpoint unavailable; follow catalog contract for this component.";
+
 function sanitizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -34,7 +36,7 @@ function sanitizeComponentRules(
         compositionRules: [],
         supportedEvents: [],
         bindingHints: [],
-        notes: "No MCP rule details returned by server."
+        notes: FALLBACK_NOTE
       }));
   }
 
@@ -81,7 +83,7 @@ function sanitizeComponentRules(
     compositionRules: [],
     supportedEvents: [],
     bindingHints: [],
-    notes: "No MCP rule details returned by server."
+    notes: FALLBACK_NOTE
   }));
 }
 
@@ -97,33 +99,42 @@ export function createMcpHttpAdapter(options: MCPHttpAdapterOptions): MCPAdapter
         };
       }
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...options.headers
-      };
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...options.headers
+        };
 
-      if (options.apiKey) {
-        headers.Authorization = `Bearer ${options.apiKey}`;
+        if (options.apiKey) {
+          headers.Authorization = `Bearer ${options.apiKey}`;
+        }
+
+        const response = await fetchImpl(options.endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ componentNames })
+        });
+
+        if (!response.ok) {
+          return {
+            contextVersion: "mcp-http-v1",
+            componentRules: sanitizeComponentRules(null, componentNames)
+          };
+        }
+
+        const payload = (await response.json()) as MCPHttpResponse;
+
+        return {
+          contextVersion:
+            typeof payload.contextVersion === "string" ? payload.contextVersion : "mcp-http-v1",
+          componentRules: sanitizeComponentRules(payload.componentRules, componentNames)
+        };
+      } catch {
+        return {
+          contextVersion: "mcp-http-v1",
+          componentRules: sanitizeComponentRules(null, componentNames)
+        };
       }
-
-      const response = await fetchImpl(options.endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ componentNames })
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`MCP HTTP request failed (${response.status}): ${body}`);
-      }
-
-      const payload = (await response.json()) as MCPHttpResponse;
-
-      return {
-        contextVersion:
-          typeof payload.contextVersion === "string" ? payload.contextVersion : "mcp-http-v1",
-        componentRules: sanitizeComponentRules(payload.componentRules, componentNames)
-      };
     }
   };
 }

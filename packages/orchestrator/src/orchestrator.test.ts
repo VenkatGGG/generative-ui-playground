@@ -192,6 +192,15 @@ function createDeps(): {
     },
     async *streamDesign() {
       yield JSON.stringify(buildRichCardSnapshot("Generated UI", "hello", "Continue"));
+    },
+    async *streamDesignV2() {
+      yield JSON.stringify({
+        tree: {
+          id: "root",
+          type: "Card",
+          children: []
+        }
+      });
     }
   };
 
